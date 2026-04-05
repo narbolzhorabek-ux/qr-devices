@@ -13,7 +13,7 @@ async function loadDevice() {
     return;
   }
 
-  await loadDeviceDetail(deviceId, user);
+  await loadDeviceDetail(deviceId, user, false);
 }
 
 async function loadDeviceList(user) {
@@ -47,7 +47,6 @@ function statusLabelDevice(s) {
 }
 
 async function loadDeviceDetail(deviceId, user) {
-  // Сначала загружаем данные
   const { data: device, error } = await db
     .from('devices').select('*').eq('id', deviceId).single();
 
@@ -55,17 +54,14 @@ async function loadDeviceDetail(deviceId, user) {
     document.getElementById('content').innerHTML = `
       <div class="card" style="text-align:center;padding:40px;">
         <p style="color:var(--red)">Устройство не найдено</p>
-        <a href="device.html" class="btn btn-secondary mt-16" style="display:inline-flex;">← Назад</a>
       </div>`;
     return;
   }
 
-  // worker и supervisor видят basic, admin видит всё
-  const levels = user.role === 'admin' ? ['basic', 'full'] : ['basic'];
+  const levels = (user.role === 'admin' || user.role === 'supervisor') ? ['basic', 'full'] : ['basic'];
   const { data: infos } = await db
     .from('device_info').select('*').eq('device_id', deviceId).in('level', levels);
 
-  // Рендерим страницу СРАЗУ — до записи лога
   const statusMap = {
     active: ['active', 'Активно'],
     maintenance: ['maintenance', 'Обслуживание'],
@@ -77,22 +73,23 @@ async function loadDeviceDetail(deviceId, user) {
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div class="card-title">${info.title}</div>
-        ${info.level === 'full' ? '<span class="role-badge role-admin">ADMIN</span>' : ''}
+        ${info.level === 'full' ? '<span class="role-badge role-admin">ПОЛНЫЙ</span>' : ''}
       </div>
       <p style="font-size:15px;line-height:1.6;white-space:pre-wrap;">${info.content}</p>
       <p class="text-muted mt-8">Обновлено: ${new Date(info.updated_at).toLocaleDateString('ru')}</p>
     </div>`).join('');
 
-  // Кнопки по роли
-  let actionBtn = '';
-  if (user.role === 'admin') actionBtn = `<a href="admin.html" class="btn btn-secondary btn-sm">⚙ Админ-панель</a>`;
+  // Кнопка только для admin
+  const adminBtn = user.role === 'admin'
+    ? `<a href="admin.html" class="btn btn-secondary btn-sm">⚙ Админ-панель</a>`
+    : '';
 
+  // Рендерим страницу — БЕЗ кнопки "все устройства"
   document.getElementById('content').innerHTML = `
-    <a href="device.html" style="display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-family:var(--font-mono);font-size:13px;text-decoration:none;margin-bottom:16px;">← Все устройства</a>
     <div class="card">
       <div class="flex-between" style="margin-bottom:12px;">
         <span class="status status-${statusClass}">${statusText}</span>
-        ${actionBtn}
+        ${adminBtn}
       </div>
       <div class="card-title" style="font-size:28px;">${device.name}</div>
       <p class="text-muted">${device.type}</p>
@@ -101,20 +98,17 @@ async function loadDeviceDetail(deviceId, user) {
           <span class="info-label">Местонахождение</span>
           <span class="info-value">${device.location}</span>
         </div>
-        <div class="info-row">
-          <span class="info-label">Статус</span>
-          <span class="info-value"><span class="status status-${statusClass}">${statusText}</span></span>
-        </div>
       </div>
     </div>
-    ${infoHtml || '<div class="card"><p class="text-muted">Информация об устройстве не добавлена</p></div>'}
+
+    ${infoHtml || '<div class="card"><p class="text-muted">Информация не добавлена</p></div>'}
     <div id="logsSection"></div>
   `;
 
-  // ПОСЛЕ рендера — записываем лог в фоне
+  // Лог в фоне
   db.from('scan_logs').insert({ device_id: deviceId, user_id: user.id });
 
-  // Логи только для admin — грузим отдельно и добавляем
+  // Логи только для admin
   if (user.role === 'admin') {
     const { data: logs } = await db
       .from('scan_logs')
