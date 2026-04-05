@@ -118,7 +118,10 @@
     try {
       const resp = await fetch(`${FUNCTIONS_URL}/send-sms`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0cm1uZndwZHRkbmV2aHBxdGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNjMzNTYsImV4cCI6MjA5MDczOTM1Nn0.huQeZ4xg1K0qJKrW75ZktTkeEmPFE9QrKFdp8idLZj8'
+        },
         body: JSON.stringify({ iin, phone })
       });
 
@@ -175,7 +178,10 @@
 
     const resp = await fetch(`${FUNCTIONS_URL}/reset-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0cm1uZndwZHRkbmV2aHBxdGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNjMzNTYsImV4cCI6MjA5MDczOTM1Nn0.huQeZ4xg1K0qJKrW75ZktTkeEmPFE9QrKFdp8idLZj8'
+      },
       body: JSON.stringify({ userId, code, newPassword })
     });
 
