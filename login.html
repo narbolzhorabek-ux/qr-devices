@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход в систему</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-logo">QR<span style="color:var(--text)">MARK</span></div>
+    <div class="login-sub">Система цифровой маркировки устройств</div>
+
+    <div class="alert alert-error" id="error">Неверный ИИН или пароль</div>
+
+    <div class="form-group">
+      <label>ИИН (12 цифр)</label>
+      <input
+        type="text"
+        id="iin"
+        inputmode="numeric"
+        maxlength="12"
+        placeholder="000000000000"
+        autocomplete="off"
+      >
+    </div>
+
+    <div class="form-group">
+      <label>Пароль</label>
+      <input type="password" id="password" placeholder="••••••••">
+    </div>
+
+    <button class="btn btn-primary" id="loginBtn" onclick="login()">
+      Войти
+    </button>
+
+    <a href="forgot.html" style="display:block;text-align:center;margin-top:16px;color:var(--text-muted);font-family:var(--font-mono);font-size:13px;text-decoration:none;">
+      Забыл пароль?
+    </a>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    // Если уже авторизован — редирект
+    if (getUser()) window.location.href = 'admin.html';
+
+    // Войти по Enter
+    document.getElementById('password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') login();
+    });
+
+    // Валидация ИИН в реальном времени
+    document.getElementById('iin').addEventListener('input', function() {
+      this.value = this.value.replace(/\D/g, '');
+    });
+
+    async function login() {
+      const iin = document.getElementById('iin').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const errorEl = document.getElementById('error');
+      const btn = document.getElementById('loginBtn');
+
+      errorEl.classList.remove('show');
+
+      if (iin.length !== 12) {
+        errorEl.textContent = 'ИИН должен содержать ровно 12 цифр';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      if (!password) {
+        errorEl.textContent = 'Введите пароль';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      btn.textContent = 'Проверка...';
+      btn.disabled = true;
+
+      const { data, error } = await db
+        .from('users')
+        .select('id, full_name, role')
+        .eq('iin', iin)
+        .eq('password_hash', password)
+        .single();
+
+      btn.textContent = 'Войти';
+      btn.disabled = false;
+
+      if (error || !data) {
+        errorEl.textContent = 'Неверный ИИН или пароль';
+        errorEl.classList.add('show');
+        return;
+      }
+
+      setUser(data);
+
+      if (data.role === 'admin') {
+        window.location.href = 'admin.html';
+      } else {
+        window.location.href = 'device.html';
+      }
+    }
+  </script>
+</body>
+</html>

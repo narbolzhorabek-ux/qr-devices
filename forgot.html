@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Забыл пароль</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <a href="login.html" style="color:var(--text-muted);font-family:var(--font-mono);font-size:13px;text-decoration:none;margin-bottom:32px;display:inline-block;">← Назад</a>
+
+  <div class="login-logo">СБРОС</div>
+  <div class="login-sub">Введите ИИН и номер телефона из базы</div>
+
+  <div class="alert alert-error" id="error"></div>
+  <div class="alert alert-success" id="success"></div>
+
+  <!-- ШАГ 1 -->
+  <div id="step1">
+    <div class="form-group">
+      <label>ИИН (12 цифр)</label>
+      <input type="text" id="iin" inputmode="numeric" maxlength="12" placeholder="000000000000" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Номер телефона</label>
+      <input type="text" id="phone" inputmode="tel" placeholder="+7 777 123 45 67" autocomplete="off">
+    </div>
+    <button class="btn btn-primary" id="sendBtn" onclick="sendCode()">Отправить код</button>
+  </div>
+
+  <!-- ШАГ 2: Ввод кода -->
+  <div id="step2" style="display:none;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:48px;" id="stepIcon">📱</div>
+      <p id="stepText" style="color:var(--text-muted);font-size:14px;"></p>
+
+      <!-- Показываем код если SMS не ушло -->
+      <div id="devCodeBox" style="display:none;background:var(--accent-dim);border:2px solid var(--accent);border-radius:12px;padding:20px;margin:16px 0;">
+        <p style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);margin-bottom:8px;">ВАШ КОД:</p>
+        <div id="devCode" style="font-family:var(--font-display);font-size:48px;color:var(--accent);letter-spacing:8px;"></div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Код (6 цифр)</label>
+      <input type="text" id="code" inputmode="numeric" maxlength="6" placeholder="000000"
+        style="font-size:28px;text-align:center;letter-spacing:8px;" autocomplete="one-time-code">
+    </div>
+    <button class="btn btn-primary" onclick="verifyCode()">Подтвердить</button>
+    <button class="btn btn-secondary" style="margin-top:8px;" onclick="goBack()">← Назад</button>
+  </div>
+
+  <!-- ШАГ 3: Новый пароль -->
+  <div id="step3" style="display:none;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:48px;">🔐</div>
+      <p style="color:var(--text-muted);font-size:14px;">Придумайте новый пароль</p>
+    </div>
+    <div class="form-group">
+      <label>Новый пароль</label>
+      <input type="password" id="newPassword" placeholder="минимум 4 символа">
+    </div>
+    <div class="form-group">
+      <label>Повторите пароль</label>
+      <input type="password" id="confirmPassword" placeholder="повторите пароль">
+    </div>
+    <button class="btn btn-primary" id="resetBtn" onclick="resetPassword()">Сохранить пароль</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase.js"></script>
+<script src="js/auth.js"></script>
+<script>
+  if (getUser()) window.location.href = 'admin.html';
+
+  const FUNCTIONS_URL = 'https://strmnfwpdtdnevhpqtar.supabase.co/functions/v1';
+  let currentUserId = null;
+
+  document.getElementById('iin').addEventListener('input', function() {
+    this.value = this.value.replace(/\D/g, '');
+  });
+
+  document.getElementById('code').addEventListener('input', function() {
+    this.value = this.value.replace(/\D/g, '');
+  });
+
+  function showError(msg) {
+    const el = document.getElementById('error');
+    el.textContent = msg; el.classList.add('show');
+    document.getElementById('success').classList.remove('show');
+    setTimeout(() => el.classList.remove('show'), 5000);
+  }
+
+  function showSuccess(msg) {
+    const el = document.getElementById('success');
+    el.textContent = msg; el.classList.add('show');
+    document.getElementById('error').classList.remove('show');
+  }
+
+  function goBack() {
+    document.getElementById('step2').style.display = 'none';
+    document.getElementById('step1').style.display = 'block';
+    document.getElementById('success').classList.remove('show');
+  }
+
+  async function sendCode() {
+    const iin = document.getElementById('iin').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+
+    if (iin.length !== 12) { showError('ИИН должен быть 12 цифр'); return; }
+    if (!phone) { showError('Введите номер телефона'); return; }
+
+    const btn = document.getElementById('sendBtn');
+    btn.disabled = true; btn.textContent = 'Отправка...';
+
+    try {
+      const resp = await fetch(`${FUNCTIONS_URL}/send-sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ iin, phone })
+      });
+
+      const data = await resp.json();
+      btn.disabled = false; btn.textContent = 'Отправить код';
+
+      if (!resp.ok) { showError(data.error || 'Ошибка'); return; }
+
+      currentUserId = data.userId;
+
+      document.getElementById('step1').style.display = 'none';
+      document.getElementById('step2').style.display = 'block';
+
+      if (data.smsSent) {
+        document.getElementById('stepIcon').textContent = '📱';
+        document.getElementById('stepText').textContent = 'Код отправлен на ваш номер телефона';
+        showSuccess('SMS отправлено!');
+      } else {
+        // SMS не ушло — показываем код на экране
+        document.getElementById('stepIcon').textContent = '🔑';
+        document.getElementById('stepText').textContent = 'Ваш код для сброса пароля:';
+        document.getElementById('devCodeBox').style.display = 'block';
+        document.getElementById('devCode').textContent = data.devCode;
+      }
+
+    } catch(e) {
+      btn.disabled = false; btn.textContent = 'Отправить код';
+      showError('Ошибка соединения');
+    }
+  }
+
+  function verifyCode() {
+    const code = document.getElementById('code').value.trim();
+    if (code.length !== 6) { showError('Введите 6-значный код'); return; }
+    sessionStorage.setItem('reset_code', code);
+    sessionStorage.setItem('reset_user_id', currentUserId);
+    document.getElementById('step2').style.display = 'none';
+    document.getElementById('step3').style.display = 'block';
+    document.getElementById('success').classList.remove('show');
+  }
+
+  async function resetPassword() {
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (newPassword.length < 4) { showError('Пароль минимум 4 символа'); return; }
+    if (newPassword !== confirmPassword) { showError('Пароли не совпадают'); return; }
+
+    const code = sessionStorage.getItem('reset_code');
+    const userId = sessionStorage.getItem('reset_user_id');
+
+    const btn = document.getElementById('resetBtn');
+    btn.disabled = true; btn.textContent = 'Сохранение...';
+
+    const resp = await fetch(`${FUNCTIONS_URL}/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, code, newPassword })
+    });
+
+    const data = await resp.json();
+    btn.disabled = false; btn.textContent = 'Сохранить пароль';
+
+    if (!resp.ok) { showError(data.error || 'Ошибка'); return; }
+
+    sessionStorage.removeItem('reset_code');
+    sessionStorage.removeItem('reset_user_id');
+
+    showSuccess('✅ Пароль успешно изменён!');
+    setTimeout(() => window.location.href = 'login.html', 2000);
+  }
+</script>
+</body>
+</html>

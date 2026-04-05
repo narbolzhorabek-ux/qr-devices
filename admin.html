@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ-панель</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="page-wide">
+    <div class="header">
+      <div class="logo">QRMARK <span style="font-size:14px;color:var(--text-muted);font-family:var(--font-mono);">ADMIN</span></div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="header-user" id="userName"></span>
+        <button class="btn btn-secondary btn-sm" onclick="logout()">Выйти</button>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs">
+      <button class="tab active" id="tab-devices" onclick="switchTab('devices')">📦 Устройства</button>
+      <button class="tab" id="tab-users" onclick="switchTab('users')">👥 Пользователи</button>
+      <button class="tab" id="tab-logs" onclick="switchTab('logs')">📋 Логи</button>
+    </div>
+
+    <!-- DEVICES TAB -->
+    <div class="tab-content active" id="content-devices">
+      <div class="alert" id="deviceAlert"></div>
+
+      <div class="section-title">Добавить устройство</div>
+      <div class="card">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label>Название</label>
+            <input id="newDeviceName" type="text" placeholder="Компрессор КВ-12">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Тип</label>
+            <input id="newDeviceType" type="text" placeholder="Компрессор">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Местонахождение</label>
+            <input id="newDeviceLocation" type="text" placeholder="Цех №1, зона A">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Статус</label>
+            <select id="newDeviceStatus">
+              <option value="active">Активно</option>
+              <option value="maintenance">Обслуживание</option>
+              <option value="danger">Опасность</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary mt-16" onclick="addDevice()">+ Добавить устройство</button>
+      </div>
+
+      <div class="section-title">Список устройств</div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <input id="deviceSearch" type="text" placeholder="Поиск по названию, типу или местонахождению..." oninput="filterDevices()" style="width:100%;">
+      </div>
+      <div id="deviceList"><div class="loading">Загрузка...</div></div>
+    </div>
+
+    <!-- USERS TAB -->
+    <div class="tab-content" id="content-users">
+      <div class="alert" id="userAlert"></div>
+
+      <div class="section-title">Добавить пользователя</div>
+      <div class="card">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group" style="margin:0;">
+            <label>ФИО</label>
+            <input id="newUserName" type="text" placeholder="Иванов Иван Иванович">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>ИИН (12 цифр)</label>
+            <input id="newUserIin" type="text" inputmode="numeric" maxlength="12" placeholder="000000000000">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Пароль</label>
+            <input id="newUserPassword" type="text" placeholder="пароль">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Роль</label>
+            <select id="newUserRole">
+              <option value="worker">рабочий (worker)</option>
+              <option value="supervisor">начальник (supervisor)</option>
+              <option value="admin">администратор (admin)</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary mt-16" onclick="addUser()">+ Добавить пользователя</button>
+      </div>
+
+      <div class="section-title">Список пользователей</div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <input id="userSearch" type="text" placeholder="Поиск по ФИО, ИИН или роли..." oninput="filterUsers()" style="width:100%;">
+      </div>
+      <div id="userList"><div class="loading">Загрузка...</div></div>
+    </div>
+
+    <!-- LOGS TAB -->
+    <div class="tab-content" id="content-logs">
+      <div class="section-title">История сканирований</div>
+      <div class="form-group" style="margin-bottom:16px;">
+        <input id="logSearch" type="text" placeholder="Поиск по устройству или пользователю..." oninput="filterLogs()" style="width:100%;">
+      </div>
+      <div id="logsList"><div class="loading">Загрузка...</div></div>
+    </div>
+  </div>
+
+  <!-- MODAL: Edit Device -->
+  <div class="modal-overlay" id="modalEditDevice">
+    <div class="modal">
+      <div class="modal-title">Редактировать устройство</div>
+      <input type="hidden" id="editDeviceId">
+      <div class="form-group"><label>Название</label><input id="editDeviceName" type="text"></div>
+      <div class="form-group"><label>Тип</label><input id="editDeviceType" type="text"></div>
+      <div class="form-group"><label>Местонахождение</label><input id="editDeviceLocation" type="text"></div>
+      <div class="form-group">
+        <label>Статус</label>
+        <select id="editDeviceStatus">
+          <option value="active">Активно</option>
+          <option value="maintenance">Обслуживание</option>
+          <option value="danger">Опасность</option>
+        </select>
+      </div>
+      <div class="flex">
+        <button class="btn btn-primary" onclick="saveDevice()" style="flex:1;">Сохранить</button>
+        <button class="btn btn-secondary" onclick="closeEditDevice()" style="flex:1;">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Content -->
+  <div class="modal-overlay" id="modalContent">
+    <div class="modal">
+      <div class="modal-title">Контент: <span id="contentDeviceName"></span></div>
+      <input type="hidden" id="contentDeviceId">
+
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);margin-bottom:8px;">👷 BASIC — видит worker</div>
+      <div class="form-group"><label>Заголовок</label><input id="basicTitle" type="text" placeholder="Инструкция по эксплуатации"></div>
+      <div class="form-group"><label>Содержание</label><textarea id="basicContent" placeholder="Инструкция, уровень опасности..."></textarea></div>
+
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent);margin:12px 0 8px;">🔐 FULL — только admin</div>
+      <div class="form-group"><label>Заголовок</label><input id="fullTitle" type="text" placeholder="Технический паспорт"></div>
+      <div class="form-group"><label>Содержание</label><textarea id="fullContent" placeholder="Технические данные, история обслуживания..."></textarea></div>
+
+      <div class="flex">
+        <button class="btn btn-primary" onclick="saveContent()" style="flex:1;">Сохранить</button>
+        <button class="btn btn-secondary" onclick="closeContent()" style="flex:1;">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: QR -->
+  <div class="modal-overlay" id="modalQR">
+    <div class="modal" style="text-align:center;">
+      <div class="modal-title">QR-код устройства</div>
+      <div id="qrContainer" style="display:flex;justify-content:center;margin:20px 0;"></div>
+      <p class="text-muted" id="qrDeviceUrl" style="font-size:11px;word-break:break-all;margin-bottom:16px;"></p>
+      <div class="flex">
+        <button class="btn btn-primary" onclick="downloadQR()" style="flex:1;">⬇ Скачать PNG</button>
+        <button class="btn btn-secondary" onclick="closeQR()" style="flex:1;">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/admin.js"></script>
+  <script>initAdmin();</script>
+</body>
+</html>
