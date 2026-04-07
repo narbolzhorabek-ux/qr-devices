@@ -16,12 +16,51 @@ async function initAdmin() {
     });
   });
 
-  // ИИН — только цифры
   document.getElementById('newUserIin').addEventListener('input', function() {
     this.value = this.value.replace(/\D/g, '');
   });
 
+  // Поиск — живой фильтр
+  document.getElementById('searchDevices').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    renderDevices(allDevices.filter(d =>
+      d.name.toLowerCase().includes(q) ||
+      d.type.toLowerCase().includes(q) ||
+      d.location.toLowerCase().includes(q)
+    ));
+  });
+
+  document.getElementById('searchUsers').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    renderUsers(allUsers.filter(u =>
+      u.full_name.toLowerCase().includes(q) ||
+      u.iin.includes(q) ||
+      u.role.toLowerCase().includes(q)
+    ));
+  });
+
+  document.getElementById('searchLogs').addEventListener('input', function() {
+    filterLogs();
+  });
+  document.getElementById('filterLogDevice').addEventListener('change', filterLogs);
+  document.getElementById('filterLogRole').addEventListener('change', filterLogs);
+
   await loadDevices();
+}
+
+function filterLogs() {
+  const q = document.getElementById('searchLogs').value.toLowerCase();
+  const deviceFilter = document.getElementById('filterLogDevice').value;
+  const roleFilter = document.getElementById('filterLogRole').value;
+
+  renderLogs(allLogs.filter(l => {
+    const matchText = !q ||
+      (l.users?.full_name || '').toLowerCase().includes(q) ||
+      (l.devices?.name || '').toLowerCase().includes(q);
+    const matchDevice = !deviceFilter || l.devices?.name === deviceFilter;
+    const matchRole = !roleFilter || l.users?.role === roleFilter;
+    return matchText && matchDevice && matchRole;
+  }));
 }
 
 // ── TABS ──
@@ -43,12 +82,14 @@ async function loadDevices() {
   const { data, error } = await db.from('devices').select('*').order('name');
   if (error) { container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`; return; }
   allDevices = data || [];
+  document.getElementById('searchDevices').value = '';
   renderDevices(allDevices);
 }
 
 function renderDevices(devices) {
   const container = document.getElementById('deviceList');
-  if (!devices.length) { container.innerHTML = '<p class="text-muted">Устройств нет</p>'; return; }
+  document.getElementById('deviceCount').textContent = `${devices.length} из ${allDevices.length}`;
+  if (!devices.length) { container.innerHTML = '<p class="text-muted">Ничего не найдено</p>'; return; }
   container.innerHTML = devices.map(d => `
     <div class="card">
       <div class="flex-between">
@@ -59,7 +100,7 @@ function renderDevices(devices) {
         <span class="status status-${d.status}">${statusLabel(d.status)}</span>
       </div>
       <div class="flex mt-8" style="flex-wrap:wrap;gap:8px;">
-        <button class="btn btn-secondary btn-sm" onclick="openEditDevice('${d.id}')">✏ Редактировать</button>
+        <button class="btn btn-secondary btn-sm" onclick="openEditDevice('${d.id}')">✏ Изменить</button>
         <button class="btn btn-secondary btn-sm" onclick="openContent('${d.id}', '${d.name}')">📄 Контент</button>
         <button class="btn btn-secondary btn-sm" onclick="showQR('${d.id}')">📱 QR-код</button>
         <a href="device.html?id=${d.id}" class="btn btn-secondary btn-sm" target="_blank">👁 Просмотр</a>
@@ -192,12 +233,14 @@ async function loadUsers() {
   const { data, error } = await db.from('users').select('*').order('full_name');
   if (error) { container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`; return; }
   allUsers = data || [];
+  document.getElementById('searchUsers').value = '';
   renderUsers(allUsers);
 }
 
 function renderUsers(users) {
   const container = document.getElementById('userList');
-  if (!users.length) { container.innerHTML = '<p class="text-muted">Пользователей нет</p>'; return; }
+  document.getElementById('userCount').textContent = `${users.length} из ${allUsers.length}`;
+  if (!users.length) { container.innerHTML = '<p class="text-muted">Ничего не найдено</p>'; return; }
   container.innerHTML = `
     <div class="table-wrap">
       <table>
@@ -205,25 +248,23 @@ function renderUsers(users) {
         <tbody>
           ${users.map(u => {
             const isSelf = u.id === currentUserId;
-            const roleOptions = ['admin', 'supervisor', 'worker']
+            const roleOptions = ['admin','supervisor','worker']
               .filter(r => r !== u.role)
               .map(r => `<option value="${r}">${roleLabel(r)}</option>`)
               .join('');
-            return `
-            <tr>
-              <td>${u.full_name} ${isSelf ? '<span style="color:var(--accent);font-size:11px;">(вы)</span>' : ''}</td>
+            return `<tr>
+              <td>${u.full_name}${isSelf ? ' <span style="color:var(--accent);font-size:11px;">(вы)</span>' : ''}</td>
               <td class="text-mono">${u.iin}</td>
               <td><span class="role-badge role-${u.role}">${roleLabel(u.role)}</span></td>
               <td>
+                ${isSelf ? '<span class="text-muted" style="font-size:12px;">нельзя изменить</span>' : `
                 <div class="flex" style="flex-wrap:wrap;">
-                  ${!isSelf ? `
-                    <select class="role-select" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;" onchange="changeRole('${u.id}', this.value)">
-                      <option value="">→ Роль</option>
-                      ${roleOptions}
-                    </select>
-                    <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}', '${u.full_name.replace(/'/g, "\\'")}')">✕</button>
-                  ` : '<span class="text-muted" style="font-size:12px;">нельзя изменить</span>'}
-                </div>
+                  <select style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;" onchange="changeRole('${u.id}', this.value)">
+                    <option value="">→ Роль</option>${roleOptions}
+                  </select>
+                  <button class="btn btn-secondary btn-sm" onclick="resetUserPassword('${u.id}', '${u.full_name.replace(/'/g,"\\'")}')">🔑 Пароль</button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}', '${u.full_name.replace(/'/g,"\\'")}')">✕</button>
+                </div>`}
               </td>
             </tr>`;
           }).join('')}
@@ -253,7 +294,7 @@ async function addUser() {
     else { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); }
     return;
   }
-  showAlert('userAlert', `Пользователь ${full_name} добавлен!`, 'success');
+  showAlert('userAlert', `${full_name} добавлен!`, 'success');
   document.getElementById('newUserIin').value = '';
   document.getElementById('newUserName').value = '';
   document.getElementById('newUserPassword').value = '';
@@ -262,7 +303,6 @@ async function addUser() {
 
 async function changeRole(id, newRole) {
   if (!newRole) return;
-  // Нельзя убрать роль admin у себя
   if (id === currentUserId) { showAlert('userAlert', 'Нельзя изменить свою роль', 'error'); await loadUsers(); return; }
   const { error } = await db.from('users').update({ role: newRole }).eq('id', id);
   if (error) { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); return; }
@@ -271,13 +311,110 @@ async function changeRole(id, newRole) {
 }
 
 async function deleteUser(id, name) {
-  // Нельзя удалить себя
   if (id === currentUserId) { showAlert('userAlert', 'Нельзя удалить самого себя', 'error'); return; }
   if (!confirm(`Удалить пользователя "${name}"?`)) return;
   const { error } = await db.from('users').delete().eq('id', id);
   if (error) { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); return; }
   showAlert('userAlert', 'Пользователь удалён', 'success');
   await loadUsers();
+}
+
+// ── EXCEL IMPORT ──
+function openImport() { document.getElementById('modalImport').classList.add('show'); }
+function closeImport() { document.getElementById('modalImport').classList.remove('show'); }
+
+// ── EXCEL EXPORT ──
+function exportExcel() {
+  if (!allUsers.length) { showAlert("userAlert", "Нет данных для экспорта", "error"); return; }
+  const XLSX = window.XLSX;
+  const rows = allUsers.map(u => ({ "ИИН": u.iin, "ФИО": u.full_name, "Пароль": u.password_hash, "Роль": u.role, "Телефон": u.phone || "" }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Пользователи");
+  XLSX.writeFile(wb, "пользователи.xlsx");
+}
+
+async function resetUserPassword(userId, name) {
+  const newPass = prompt(`Новый пароль для "${name}":`);
+  if (!newPass || newPass.length < 4) { showAlert("userAlert", "Пароль минимум 4 символа", "error"); return; }
+  const { error } = await db.from("users").update({ password_hash: newPass }).eq("id", userId);
+  if (error) { showAlert("userAlert", "Ошибка: " + error.message, "error"); return; }
+  showAlert("userAlert", `Пароль для ${name} изменён`, "success");
+  await loadUsers();
+}
+
+async function resetAllPasswords() {
+  const newPass = prompt("Установить всем одинаковый пароль:");
+  if (!newPass || newPass.length < 4) { showAlert("userAlert", "Пароль минимум 4 символа", "error"); return; }
+  if (!confirm(`Установить пароль всем ${allUsers.length} пользователям?`)) return;
+  const { error } = await db.from("users").update({ password_hash: newPass }).neq("id", currentUserId);
+  if (error) { showAlert("userAlert", "Ошибка: " + error.message, "error"); return; }
+  showAlert("userAlert", "Пароль изменён для всех!", "success");
+  await loadUsers();
+}
+
+async function importExcel() {
+  const file = document.getElementById('excelFile').files[0];
+  if (!file) { showAlert('importAlert', 'Выберите файл', 'error'); return; }
+
+  const XLSX = window.XLSX;
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      const workbook = XLSX.read(e.target.result, { type: 'binary' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
+
+      if (!rows.length) { showAlert('importAlert', 'Файл пустой', 'error'); return; }
+
+      // Показать превью
+      const preview = rows.slice(0, 3).map(r => JSON.stringify(r)).join('\n');
+      document.getElementById('importPreview').textContent =
+        `Найдено строк: ${rows.length}\nПример первых 3:\n${preview}`;
+
+      // Маппинг колонок
+      const roleMap = document.getElementById('importRole').value;
+      const passwordDefault = document.getElementById('importPassword').value || '1234';
+
+      const users = rows.map(r => ({
+        iin: String(r['ИИН'] || r['иин'] || r['iin'] || r['IIN'] || '').replace(/\D/g, '').slice(0, 12),
+        full_name: String(r['ФИО'] || r['фио'] || r['Имя'] || r['full_name'] || r['name'] || '').trim(),
+        password_hash: String(r['Пароль'] || r['пароль'] || r['password'] || passwordDefault),
+        role: String(r['Роль'] || r['роль'] || r['role'] || roleMap)
+      })).filter(u => u.iin.length === 12 && u.full_name);
+
+      if (!users.length) {
+        showAlert('importAlert', 'Не найдено корректных строк. Проверьте заголовки колонок: ИИН, ФИО, Пароль, Роль', 'error');
+        return;
+      }
+
+      document.getElementById('importPreview').textContent +=
+        `\n\nГотово к загрузке: ${users.length} пользователей`;
+
+      // Загружаем батчами по 100
+      const btn = document.getElementById('importBtn');
+      btn.disabled = true;
+      btn.textContent = 'Загружаем...';
+
+      let success = 0, errors = 0;
+      for (let i = 0; i < users.length; i += 100) {
+        const batch = users.slice(i, i + 100);
+        const { error } = await db.from('users').upsert(batch, { onConflict: 'iin', ignoreDuplicates: false });
+        if (error) { errors += batch.length; }
+        else { success += batch.length; }
+        btn.textContent = `Загружено ${Math.min(i + 100, users.length)} из ${users.length}...`;
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Загрузить из Excel';
+      showAlert('importAlert', `✅ Загружено: ${success}, ошибок: ${errors}`, success > 0 ? 'success' : 'error');
+      if (success > 0) { await loadUsers(); }
+
+    } catch(err) {
+      showAlert('importAlert', 'Ошибка чтения файла: ' + err.message, 'error');
+    }
+  };
+  reader.readAsBinaryString(file);
 }
 
 // ── LOGS ──
@@ -288,15 +425,26 @@ async function loadLogs() {
     .from('scan_logs')
     .select('scanned_at, devices(name), users(full_name, role)')
     .order('scanned_at', { ascending: false })
-    .limit(100);
+    .limit(500);
   if (error) { container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`; return; }
   allLogs = data || [];
+
+  // Заполнить фильтр по устройствам
+  const deviceNames = [...new Set(allLogs.map(l => l.devices?.name).filter(Boolean))];
+  const deviceSelect = document.getElementById('filterLogDevice');
+  deviceSelect.innerHTML = '<option value="">Все устройства</option>' +
+    deviceNames.map(n => `<option value="${n}">${n}</option>`).join('');
+
+  document.getElementById('searchLogs').value = '';
+  document.getElementById('filterLogDevice').value = '';
+  document.getElementById('filterLogRole').value = '';
   renderLogs(allLogs);
 }
 
 function renderLogs(logs) {
   const container = document.getElementById('logsList');
-  if (!logs.length) { container.innerHTML = '<p class="text-muted">Логов пока нет</p>'; return; }
+  document.getElementById('logCount').textContent = `${logs.length} из ${allLogs.length}`;
+  if (!logs.length) { container.innerHTML = '<p class="text-muted">Ничего не найдено</p>'; return; }
   container.innerHTML = `
     <div class="table-wrap">
       <table>
@@ -314,40 +462,9 @@ function renderLogs(logs) {
     </div>`;
 }
 
-// ── FILTERS ──
-function filterDevices() {
-  const query = document.getElementById('deviceSearch').value.toLowerCase();
-  const filtered = allDevices.filter(d =>
-    d.name.toLowerCase().includes(query) ||
-    d.type.toLowerCase().includes(query) ||
-    d.location.toLowerCase().includes(query)
-  );
-  renderDevices(filtered);
-}
-
-function filterUsers() {
-  const query = document.getElementById('userSearch').value.toLowerCase();
-  const filtered = allUsers.filter(u =>
-    u.full_name.toLowerCase().includes(query) ||
-    u.iin.includes(query) ||
-    roleLabel(u.role).toLowerCase().includes(query)
-  );
-  renderUsers(filtered);
-}
-
-function filterLogs() {
-  const query = document.getElementById('logSearch').value.toLowerCase();
-  const filtered = allLogs.filter(l =>
-    (l.devices?.name || '').toLowerCase().includes(query) ||
-    (l.users?.full_name || '').toLowerCase().includes(query) ||
-    (roleLabel(l.users?.role || '')).toLowerCase().includes(query)
-  );
-  renderLogs(filtered);
-}
-
 function showAlert(id, msg, type) {
   const el = document.getElementById(id);
   el.textContent = msg;
   el.className = `alert alert-${type} show`;
-  setTimeout(() => el.classList.remove('show'), 4000);
+  setTimeout(() => el.classList.remove('show'), 5000);
 }
