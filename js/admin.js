@@ -468,3 +468,104 @@ function showAlert(id, msg, type) {
   el.className = `alert alert-${type} show`;
   setTimeout(() => el.classList.remove('show'), 5000);
 }
+
+// ── FILES ──
+async function openFiles(deviceId, deviceName) {
+  document.getElementById('filesDeviceName').textContent = deviceName;
+  document.getElementById('filesDeviceId').value = deviceId;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('modalFiles').classList.add('show');
+  await loadFiles(deviceId);
+}
+
+function closeFiles() {
+  document.getElementById('modalFiles').classList.remove('show');
+}
+
+async function loadFiles(deviceId) {
+  const container = document.getElementById('filesList');
+  const id = deviceId || document.getElementById('filesDeviceId').value;
+  const { data, error } = await db.from('device_files').select('*').eq('device_id', id).order('uploaded_at', { ascending: false });
+  if (error || !data || !data.length) {
+    container.innerHTML = '<p class="text-muted">Файлов нет</p>';
+    return;
+  }
+  container.innerHTML = data.map(f => {
+    const icon = f.file_type.includes('pdf') ? '📄' : f.file_type.includes('word') || f.name.endsWith('.docx') ? '📝' : f.file_type.includes('sheet') || f.name.endsWith('.xlsx') ? '📊' : f.file_type.includes('image') ? '🖼' : '📎';
+    const workerBadge = f.visible_to_workers
+      ? '<span style="font-size:11px;background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:2px 8px;border-radius:100px;">👷 видно рабочим</span>'
+      : '<span style="font-size:11px;background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);padding:2px 8px;border-radius:100px;">🔒 только admin/начальник</span>';
+    return `<div class="card" style="margin-bottom:8px;">
+      <div class="flex-between">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:24px;">${icon}</span>
+          <div>
+            <div style="font-weight:600;font-size:14px;">${f.name}</div>
+            <div style="margin-top:4px;">${workerBadge}</div>
+            <div class="text-muted">${new Date(f.uploaded_at).toLocaleDateString('ru')}</div>
+          </div>
+        </div>
+        <div class="flex" style="flex-wrap:wrap;gap:4px;">
+          <button class="btn btn-secondary btn-sm" onclick="toggleWorkerAccess('${f.id}', ${f.visible_to_workers})">
+            ${f.visible_to_workers ? '🔒 Скрыть' : '👷 Открыть'}
+          </button>
+          <a href="${getFileUrl(f.file_path)}" target="_blank" class="btn btn-secondary btn-sm">👁</a>
+          <a href="${getFileUrl(f.file_path)}" download="${f.name}" class="btn btn-secondary btn-sm">⬇</a>
+          <button class="btn btn-danger btn-sm" onclick="deleteFile('${f.id}', '${f.file_path}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function getFileUrl(path) {
+  return `https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/${path}`;
+}
+
+async function uploadFile() {
+  const file = document.getElementById('fileInput').files[0];
+  const deviceId = document.getElementById('filesDeviceId').value;
+  if (!file) { showAlert('filesAlert', 'Выберите файл', 'error'); return; }
+  if (file.size > 20 * 1024 * 1024) { showAlert('filesAlert', 'Файл не должен превышать 20MB', 'error'); return; }
+
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true; btn.textContent = 'Загружаем...';
+
+  const filePath = `${deviceId}/${Date.now()}_${file.name}`;
+  const { error: uploadError } = await db.storage.from('device-files').upload(filePath, file);
+
+  if (uploadError) {
+    btn.disabled = false; btn.textContent = '⬆ Загрузить';
+    showAlert('filesAlert', 'Ошибка загрузки: ' + uploadError.message, 'error');
+    return;
+  }
+
+  const visibleToWorkers = document.getElementById('visibleToWorkers').checked;
+  await db.from('device_files').insert({
+    device_id: deviceId,
+    name: file.name,
+    file_path: filePath,
+    file_type: file.type,
+    visible_to_workers: visibleToWorkers
+  });
+
+  btn.disabled = false; btn.textContent = '⬆ Загрузить';
+  document.getElementById('fileInput').value = '';
+  showAlert('filesAlert', `${file.name} загружен!`, 'success');
+  await loadFiles(deviceId);
+}
+
+async function toggleWorkerAccess(fileId, currentValue) {
+  const { error } = await db.from('device_files').update({ visible_to_workers: !currentValue }).eq('id', fileId);
+  if (error) { showAlert('filesAlert', 'Ошибка: ' + error.message, 'error'); return; }
+  const deviceId = document.getElementById('filesDeviceId').value;
+  await loadFiles(deviceId);
+}
+
+async function deleteFile(id, path) {
+  if (!confirm('Удалить файл?')) return;
+  await db.storage.from('device-files').remove([path]);
+  await db.from('device_files').delete().eq('id', id);
+  const deviceId = document.getElementById('filesDeviceId').value;
+  await loadFiles(deviceId);
+}
