@@ -103,6 +103,7 @@ function renderDevices(devices) {
         <button class="btn btn-secondary btn-sm" onclick="openEditDevice('${d.id}')">✏ Изменить</button>
         <button class="btn btn-secondary btn-sm" onclick="openContent('${d.id}', '${d.name}')">📄 Контент</button>
         <button class="btn btn-secondary btn-sm" onclick="showQR('${d.id}')">📱 QR-код</button>
+        <button class="btn btn-secondary btn-sm" onclick="openFiles('${d.id}', '${d.name}')">📎 Файлы</button>
         <a href="device.html?id=${d.id}" class="btn btn-secondary btn-sm" target="_blank">👁 Просмотр</a>
         <button class="btn btn-danger btn-sm" onclick="deleteDevice('${d.id}', '${d.name}')">✕ Удалить</button>
       </div>
