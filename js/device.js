@@ -97,8 +97,12 @@ async function loadDeviceDetail(deviceId, user) {
       <button class="btn btn-primary" onclick="changePassword('${user.id}')">Сохранить пароль</button>
     </div>
     
+    <div id="filesSection"></div>
     <div id="logsSection"></div>
   `;
+
+  // Загрузить файлы
+  loadDeviceFiles(deviceId);
 
   // Лог в фоне
   db.from('scan_logs').insert({ device_id: deviceId, user_id: user.id });
@@ -139,4 +143,36 @@ async function changePassword(userId) {
   okEl.classList.add('show');
   document.getElementById('newPwd').value = '';
   document.getElementById('confirmPwd').value = '';
+}
+
+async function loadDeviceFiles(deviceId) {
+  const user = getUser();
+  let query = db.from('device_files').select('*').eq('device_id', deviceId).order('uploaded_at', { ascending: false });
+  // Рабочий видит только файлы с разрешением
+  if (user && user.role === 'worker') {
+    query = query.eq('visible_to_workers', true);
+  }
+  const { data, error } = await query;
+  const container = document.getElementById('filesSection');
+  if (!container) return;
+  if (error || !data || !data.length) return;
+
+  const filesHtml = data.map(f => {
+    const icon = f.file_type.includes('pdf') ? '📄' : f.file_type.includes('word') || f.name.endsWith('.docx') ? '📝' : f.file_type.includes('sheet') || f.name.endsWith('.xlsx') ? '📊' : f.file_type.includes('image') ? '🖼' : '📎';
+    const url = `https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/${f.file_path}`;
+    return `<div class="card" style="margin-bottom:8px;">
+      <div class="flex-between">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:24px;">${icon}</span>
+          <div>
+            <div style="font-weight:600;font-size:14px;">${f.name}</div>
+            <div class="text-muted">${new Date(f.uploaded_at).toLocaleDateString('ru')}</div>
+          </div>
+        </div>
+        <a href="${url}" target="_blank" class="btn btn-secondary btn-sm">👁 Открыть</a>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="section-title">📎 Документы</div>${filesHtml}`;
 }
