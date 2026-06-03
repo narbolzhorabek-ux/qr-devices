@@ -482,7 +482,8 @@ async function uploadFile() {
   if (file.size > 20 * 1024 * 1024) { showAlert('filesAlert', 'Файл не должен превышать 20MB', 'error'); return; }
   const btn = document.getElementById('uploadBtn');
   btn.disabled = true; btn.textContent = 'Загружаем...';
-  const filePath = `${deviceId}/${Date.now()}_${file.name}`;
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const filePath = `${deviceId}/${Date.now()}_${safeName}`;
   const { error: uploadError } = await db.storage.from('device-files').upload(filePath, file);
   if (uploadError) { btn.disabled = false; btn.textContent = '⬆ Загрузить'; showAlert('filesAlert', 'Ошибка загрузки: ' + uploadError.message, 'error'); return; }
   const visibleToWorkers = document.getElementById('visibleToWorkers').checked;
