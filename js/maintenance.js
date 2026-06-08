@@ -307,7 +307,43 @@ async function testNotification(deviceId, deviceName) {
   btn.textContent = '📧 Тест письма';
 }
 
+// ── Время уведомлений (из/в БД) ─────────────
+
+async function loadNotifyTime() {
+  try {
+    const { data } = await db.from('settings').select('value').eq('key', 'notify_time').single();
+    if (data?.value) {
+      document.getElementById('notifyTime').value = data.value;
+    }
+  } catch(e) {
+    // нет записи — оставить дефолт 12:00
+  }
+}
+
+async function saveNotifyTime() {
+  const time = document.getElementById('notifyTime').value || '12:00';
+  const btn = document.getElementById('saveNotifyTimeBtn');
+  btn.disabled = true;
+  btn.textContent = 'Сохранение...';
+
+  const { error } = await db.from('settings').upsert({ key: 'notify_time', value: time });
+
+  btn.disabled = false;
+  btn.textContent = '💾 Сохранить';
+
+  const alert = document.getElementById('notifyTimeAlert');
+  if (error) {
+    alert.textContent = 'Ошибка: ' + error.message;
+    alert.className = 'alert alert-error show';
+  } else {
+    alert.textContent = `✅ Время сохранено: ${time} (Астана). Уведомления будут приходить в это время.`;
+    alert.className = 'alert alert-success show';
+  }
+  setTimeout(() => alert.classList.remove('show'), 4000);
+}
+
 // ── Утилиты ─────────────────────────────────
+
 function showMaintenanceAlert(msg, type) {
   const el = document.getElementById('maintenanceAlert');
   el.textContent = msg;
