@@ -45,6 +45,7 @@
     <button class="tab active" id="tab-devices" onclick="switchTab('devices')">📦 Устройства</button>
     <button class="tab" id="tab-users" onclick="switchTab('users')">👥 Пользователи</button>
     <button class="tab" id="tab-logs" onclick="switchTab('logs')">📋 Логи</button>
+    <button class="tab" id="tab-maintenance" onclick="switchTab('maintenance')">🔧 ТО</button>
   </div>
 
   <!-- ══ DEVICES ══ -->
@@ -128,9 +129,43 @@
     </div>
     <div id="logsList"><div class="loading">Загрузка...</div></div>
   </div>
-</div>
+  <!-- ══ MAINTENANCE ══ -->
+  <div class="tab-content" id="content-maintenance">
+    <div class="alert" id="maintenanceAlert"></div>
 
-<!-- MODAL: Edit Device -->
+    <div class="section-title">Техническое обслуживание</div>
+
+    <!-- Блок времени уведомлений -->
+    <div class="card" style="margin-bottom:16px;border:1px solid var(--border);">
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px;">🕐 Время отправки уведомлений</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Edge Function сама проверяет это время каждый час и отправляет в нужный момент</div>
+      <div class="alert" id="notifyTimeAlert"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;">
+        <div class="form-group" style="margin:0;">
+          <label>Время (по Астане, UTC+6)</label>
+          <input id="notifyTime" type="time" value="12:00" style="font-family:var(--font-mono);font-size:22px;letter-spacing:2px;">
+        </div>
+        <div>
+          <button class="btn btn-primary" onclick="saveNotifyTime()" id="saveNotifyTimeBtn" style="width:100%;height:48px;">💾 Сохранить</button>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">
+        ℹ️ Уведомления придут за 4 дня до ТО и в день ТО — в указанное время
+      </div>
+    </div>
+    <div class="search-bar">
+      <input id="searchMaintenance" type="text" placeholder="🔍 Поиск по названию, типу, месту..." oninput="filterMaintenance()">
+      <select id="filterMaintenanceStatus" style="min-width:160px;" onchange="filterMaintenance()">
+        <option value="">Все</option>
+        <option value="overdue">⚠️ Просрочено</option>
+        <option value="soon">🟡 Скоро (до 7 дн.)</option>
+        <option value="ok">🟢 В норме</option>
+        <option value="none">Не настроено</option>
+      </select>
+    </div>
+    <div id="maintenanceList"><div class="loading">Загрузка...</div></div>
+  </div>
+</div>
 <div class="modal-overlay" id="modalEditDevice">
   <div class="modal">
     <div class="modal-title">Редактировать устройство</div>
@@ -247,12 +282,65 @@
   </div>
 </div>
 
+<!-- MODAL: Maintenance Settings -->
+<div class="modal-overlay" id="modalMaintenance">
+  <div class="modal">
+    <div class="modal-title">⚙ Настройки ТО: <span id="msDeviceName"></span></div>
+    <input type="hidden" id="msDeviceId">
+    <div class="alert" id="msAlert"></div>
+
+    <div class="form-group">
+      <label>Интервал обслуживания (дней)</label>
+      <input id="msInterval" type="number" min="1" max="3650" placeholder="90" oninput="updateNextPreview()">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Например: 15, 30, 90, 180, 365</div>
+    </div>
+
+    <div class="form-group">
+      <label>Дата последнего ТО</label>
+      <input id="msLastDate" type="date" oninput="updateNextPreview()">
+    </div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">📅 Следующее ТО (авторасчёт):</div>
+      <div id="msNextPreview" style="font-weight:700;font-size:16px;font-family:var(--font-mono);">—</div>
+    </div>
+
+    <div class="form-group">
+      <label>Email для уведомлений</label>
+      <input id="msEmail" type="email" placeholder="narbolzhorabek@gmail.com">
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Уведомление придёт за 4 дня и в день ТО</div>
+    </div>
+
+    <div class="flex">
+      <button class="btn btn-primary" id="msSaveBtn" onclick="saveMaintenanceSettings()" style="flex:1;">Сохранить</button>
+      <button class="btn btn-secondary" onclick="closeMaintenanceSettings()" style="flex:1;">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Maintenance Logs -->
+<div class="modal-overlay" id="modalMaintenanceLogs">
+  <div class="modal">
+    <div class="modal-title">📋 История ТО: <span id="logsDeviceName"></span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Дата</th><th>Заметки</th><th>Записано</th></tr></thead>
+        <tbody id="maintenanceLogsBody">
+          <tr><td colspan="3" class="text-muted" style="padding:16px;">Загрузка...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <button class="btn btn-secondary" onclick="closeMaintenanceLogs()" style="margin-top:16px;width:100%;">Закрыть</button>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="js/supabase.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/admin.js"></script>
+<script src="js/maintenance.js"></script>
 <script>initAdmin();</script>
 </body>
 </html>
