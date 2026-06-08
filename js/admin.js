@@ -66,7 +66,7 @@ function switchTab(tab) {
   if (tab === 'devices') loadDevices();
   if (tab === 'users') loadUsers();
   if (tab === 'logs') loadLogs();
-  if (tab === 'maintenance') loadMaintenance();
+  if (tab === 'maintenance') { loadMaintenance(); loadNotifyTime(); }
 }
 
 async function loadDevices() {
