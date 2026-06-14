@@ -2,60 +2,44 @@ let currentTab = 'devices';
 let allDevices = [];
 let allUsers = [];
 let allLogs = [];
-let currentUserId = null;
+let currentUser = null;
+let currentContentTab = 'basic';
 
+// ── INIT ──────────────────────────────────────
 async function initAdmin() {
-  const user = requireAdmin();
-  if (!user) return;
-  currentUserId = user.id;
-  document.getElementById('userName').textContent = user.full_name;
+  currentUser = requireAdmin();
+  if (!currentUser) return;
 
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', function(e) {
-      if (e.target === this) this.classList.remove('show');
-    });
+  document.getElementById('userName').textContent = currentUser.full_name;
+  const roleEl = document.getElementById('userRoleBadge');
+  if (roleEl) roleEl.innerHTML = `<span class="role-badge ${roleBadgeClass(currentUser.role)}">${roleLabel(currentUser.role)}</span>`;
+
+  // Скрыть добавление если нет прав
+  if (!isAdmin(currentUser)) {
+    const addCard = document.getElementById('addDeviceCard');
+    const addTitle = document.getElementById('addDeviceTitle');
+    if (addCard) addCard.style.display = 'none';
+    if (addTitle) addTitle.style.display = 'none';
+  }
+  if (!isAdmin(currentUser)) {
+    const addUserCard = document.getElementById('addUserCard');
+    const addUserTitle = document.getElementById('addUserTitle');
+    if (addUserCard) addUserCard.style.display = 'none';
+    if (addUserTitle) addUserTitle.style.display = 'none';
+  }
+
+  document.querySelectorAll('.modal-overlay').forEach(o => {
+    o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); });
   });
 
-  document.getElementById('newUserIin').addEventListener('input', function() {
+  document.getElementById('newUserIin')?.addEventListener('input', function() {
     this.value = this.value.replace(/\D/g, '');
   });
-
-  document.getElementById('searchDevices').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    renderDevices(allDevices.filter(d =>
-      d.name.toLowerCase().includes(q) ||
-      d.type.toLowerCase().includes(q) ||
-      d.location.toLowerCase().includes(q)
-    ));
-  });
-
-  document.getElementById('searchUsers').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    renderUsers(allUsers.filter(u =>
-      u.full_name.toLowerCase().includes(q) ||
-      u.iin.includes(q) ||
-      u.role.toLowerCase().includes(q)
-    ));
-  });
-
-  document.getElementById('searchLogs').addEventListener('input', filterLogs);
-  document.getElementById('filterLogDevice').addEventListener('change', filterLogs);
-  document.getElementById('filterLogRole').addEventListener('change', filterLogs);
 
   await loadDevices();
 }
 
-function filterLogs() {
-  const q = document.getElementById('searchLogs').value.toLowerCase();
-  const deviceFilter = document.getElementById('filterLogDevice').value;
-  const roleFilter = document.getElementById('filterLogRole').value;
-  renderLogs(allLogs.filter(l => {
-    const matchText = !q || (l.users?.full_name || '').toLowerCase().includes(q) || (l.devices?.name || '').toLowerCase().includes(q);
-    const matchDevice = !deviceFilter || l.devices?.name === deviceFilter;
-    const matchRole = !roleFilter || l.users?.role === roleFilter;
-    return matchText && matchDevice && matchRole;
-  }));
-}
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
 function switchTab(tab) {
   currentTab = tab;
@@ -69,206 +53,356 @@ function switchTab(tab) {
   if (tab === 'maintenance') { loadMaintenance(); loadNotifyTime(); }
 }
 
-async function loadDevices() {
-  const container = document.getElementById('deviceList');
-  container.innerHTML = '<div class="loading">Загрузка...</div>';
-  const { data, error } = await db.from('devices').select('*').order('name');
-  if (error) { container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`; return; }
-  allDevices = data || [];
-  document.getElementById('searchDevices').value = '';
-  renderDevices(allDevices);
-}
-
-function renderDevices(devices) {
-  const container = document.getElementById('deviceList');
-  document.getElementById('deviceCount').textContent = `${devices.length} из ${allDevices.length}`;
-  if (!devices.length) { container.innerHTML = '<p class="text-muted">Ничего не найдено</p>'; return; }
-  container.innerHTML = devices.map(d => `
-    <div class="card">
-      <div class="flex-between">
-        <div>
-          <div style="font-weight:600;">${d.name}</div>
-          <div class="text-muted">${d.type} · ${d.location}</div>
-        </div>
-        <span class="status status-${d.status}">${statusLabel(d.status)}</span>
-      </div>
-      <div class="flex mt-8" style="flex-wrap:wrap;gap:8px;">
-        <button class="btn btn-secondary btn-sm" onclick="openEditDevice('${d.id}')">✏ Изменить</button>
-        <button class="btn btn-secondary btn-sm" onclick="openContent('${d.id}', '${d.name}')">📄 Контент</button>
-        <button class="btn btn-secondary btn-sm" onclick="showQR('${d.id}')">📱 QR-код</button>
-        <button class="btn btn-secondary btn-sm" onclick="openFiles('${d.id}', '${d.name}')">📎 Файлы</button>
-        <button class="btn btn-secondary btn-sm" onclick="switchTab('maintenance');setTimeout(()=>openMaintenanceSettings('${d.id}'),300)">🔧 ТО</button>
-        <a href="device.html?id=${d.id}" class="btn btn-secondary btn-sm" target="_blank">👁 Просмотр</a>
-        <button class="btn btn-danger btn-sm" onclick="deleteDevice('${d.id}', '${d.name}')">✕ Удалить</button>
-      </div>
-    </div>`).join('');
+function showAlert(id, msg, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.className = `alert alert-${type} show`;
+  setTimeout(() => el.classList.remove('show'), 5000);
 }
 
 function statusLabel(s) {
   return { active: 'Активно', maintenance: 'Обслуживание', danger: 'Опасность' }[s] || s;
 }
 
+// ── DUPLICATE CHECK ───────────────────────────
+async function checkDuplicate() {
+  const name = document.getElementById('newDeviceName').value.trim().toLowerCase();
+  const invNum = document.getElementById('newDeviceInvNum').value.trim().toLowerCase();
+  const warn = document.getElementById('duplicateWarning');
+  if (!name && !invNum) { warn.classList.remove('show'); return; }
+
+  const dupe = allDevices.find(d =>
+    (name && d.name?.toLowerCase() === name) ||
+    (invNum && d.inv_number?.toLowerCase() === invNum && invNum !== '')
+  );
+  warn.classList.toggle('show', !!dupe);
+}
+
+// ── DEVICES ───────────────────────────────────
+async function loadDevices() {
+  const container = document.getElementById('deviceList');
+  container.innerHTML = '<div class="loading">Загрузка...</div>';
+  const { data, error } = await db.from('devices').select('*').order('name');
+  if (error) { container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`; return; }
+  allDevices = data || [];
+  renderDevices(allDevices);
+}
+
+function filterDevices() {
+  const q = document.getElementById('searchDevices').value.toLowerCase();
+  const st = document.getElementById('filterStatus').value;
+  renderDevices(allDevices.filter(d =>
+    (!q || d.name?.toLowerCase().includes(q) || d.type?.toLowerCase().includes(q) || d.location?.toLowerCase().includes(q) || d.inv_number?.toLowerCase().includes(q)) &&
+    (!st || d.status === st)
+  ));
+}
+
+function renderDevices(devices) {
+  const container = document.getElementById('deviceList');
+  document.getElementById('deviceCount').textContent = `${devices.length} из ${allDevices.length}`;
+  if (!devices.length) { container.innerHTML = '<p class="text-muted" style="padding:20px;">Ничего не найдено</p>'; return; }
+
+  container.innerHTML = devices.map(d => `
+    <div class="card">
+      <div class="flex-between" style="flex-wrap:wrap;gap:8px;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-weight:700;font-size:16px;">${d.name}</div>
+          <div class="text-muted" style="margin-top:2px;">
+            ${d.brand ? `<span style="margin-right:8px;">🏷 ${d.brand}</span>` : ''}
+            ${d.inv_number ? `<span style="margin-right:8px;font-family:var(--font-mono);">📋 ${d.inv_number}</span>` : ''}
+          </div>
+          <div class="text-muted">${d.type || ''} · ${d.location || ''}</div>
+        </div>
+        <span class="status status-${d.status}">${statusLabel(d.status)}</span>
+      </div>
+      ${d.description ? `<div style="margin-top:8px;font-size:13px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:8px;">${d.description}</div>` : ''}
+      <div class="flex mt-8" style="flex-wrap:wrap;gap:6px;">
+        ${isAdmin(currentUser) ? `<button class="btn btn-secondary btn-sm" onclick="openEditDevice('${d.id}')">✏ Изменить</button>` : ''}
+        <button class="btn btn-secondary btn-sm" onclick="openContent('${d.id}', '${d.name.replace(/'/g,"\\'")}')">📄 Контент</button>
+        <button class="btn btn-secondary btn-sm" onclick="showQR('${d.id}', '${d.name.replace(/'/g,"\\'")}')">📱 QR-код</button>
+        <button class="btn btn-secondary btn-sm" onclick="openFiles('${d.id}', '${d.name.replace(/'/g,"\\'")}')">📎 Файлы</button>
+        <button class="btn btn-secondary btn-sm" onclick="switchTab('maintenance');setTimeout(()=>openMaintenanceSettings('${d.id}'),300)">🔧 ТО</button>
+        <a href="device.html?id=${d.id}" class="btn btn-secondary btn-sm" target="_blank">👁 Просмотр</a>
+        ${isAdmin(currentUser) ? `<button class="btn btn-danger btn-sm" onclick="deleteDevice('${d.id}', '${d.name.replace(/'/g,"\\'")}')">✕ Удалить</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
 async function addDevice() {
   const name = document.getElementById('newDeviceName').value.trim();
+  const brand = document.getElementById('newDeviceBrand').value.trim();
+  const inv_number = document.getElementById('newDeviceInvNum').value.trim();
   const type = document.getElementById('newDeviceType').value.trim();
   const location = document.getElementById('newDeviceLocation').value.trim();
   const status = document.getElementById('newDeviceStatus').value;
-  if (!name || !type || !location) { showAlert('deviceAlert', 'Заполните все поля', 'error'); return; }
+  const description = document.getElementById('newDeviceInfo').value.trim();
+
+  if (!name || !location) { showAlert('deviceAlert', 'Заполните обязательные поля: Наименование и Местонахождение', 'error'); return; }
+
+  // Проверка дублей
+  const dupe = allDevices.find(d =>
+    d.name?.toLowerCase() === name.toLowerCase() ||
+    (inv_number && d.inv_number?.toLowerCase() === inv_number.toLowerCase())
+  );
+  if (dupe) { showAlert('deviceAlert', `⚠️ ОТУ с таким наименованием или инвентарным номером уже существует: "${dupe.name}"`, 'error'); return; }
+
   const btn = document.querySelector('[onclick="addDevice()"]');
   btn.disabled = true; btn.textContent = 'Сохранение...';
-  const { error } = await db.from('devices').insert({ name, type, location, status });
-  btn.disabled = false; btn.textContent = '+ Добавить устройство';
+
+  const { error } = await db.from('devices').insert({ name, brand, inv_number, type, location, status, description });
+  btn.disabled = false; btn.textContent = '+ Зарегистрировать ОТУ';
+
   if (error) { showAlert('deviceAlert', 'Ошибка: ' + error.message, 'error'); return; }
-  showAlert('deviceAlert', 'Устройство добавлено!', 'success');
-  document.getElementById('newDeviceName').value = '';
-  document.getElementById('newDeviceType').value = '';
-  document.getElementById('newDeviceLocation').value = '';
+
+  showAlert('deviceAlert', `✅ ОТУ "${name}" зарегистрировано!`, 'success');
+  ['newDeviceName','newDeviceBrand','newDeviceInvNum','newDeviceType','newDeviceLocation','newDeviceInfo'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('duplicateWarning').classList.remove('show');
   await loadDevices();
 }
 
 async function deleteDevice(id, name) {
-  if (!confirm(`Удалить устройство "${name}"?`)) return;
+  if (!isAdmin(currentUser)) return;
+  if (!confirm(`Удалить ОТУ "${name}"?`)) return;
   const { error } = await db.from('devices').delete().eq('id', id);
   if (error) { showAlert('deviceAlert', 'Ошибка: ' + error.message, 'error'); return; }
-  showAlert('deviceAlert', 'Устройство удалено', 'success');
+  showAlert('deviceAlert', 'ОТУ удалено', 'success');
   await loadDevices();
 }
 
 async function openEditDevice(id) {
-  const device = allDevices.find(d => d.id === id);
-  if (!device) return;
+  const d = allDevices.find(x => x.id === id);
+  if (!d) return;
   document.getElementById('editDeviceId').value = id;
-  document.getElementById('editDeviceName').value = device.name;
-  document.getElementById('editDeviceType').value = device.type;
-  document.getElementById('editDeviceLocation').value = device.location;
-  document.getElementById('editDeviceStatus').value = device.status;
+  document.getElementById('editDeviceName').value = d.name || '';
+  document.getElementById('editDeviceBrand').value = d.brand || '';
+  document.getElementById('editDeviceInvNum').value = d.inv_number || '';
+  document.getElementById('editDeviceType').value = d.type || '';
+  document.getElementById('editDeviceLocation').value = d.location || '';
+  document.getElementById('editDeviceStatus').value = d.status || 'active';
+  document.getElementById('editDeviceInfo').value = d.description || '';
   document.getElementById('modalEditDevice').classList.add('show');
 }
 
-function closeEditDevice() { document.getElementById('modalEditDevice').classList.remove('show'); }
-
-async function saveDevice() {
+async function saveEditDevice() {
   const id = document.getElementById('editDeviceId').value;
   const name = document.getElementById('editDeviceName').value.trim();
+  const brand = document.getElementById('editDeviceBrand').value.trim();
+  const inv_number = document.getElementById('editDeviceInvNum').value.trim();
   const type = document.getElementById('editDeviceType').value.trim();
   const location = document.getElementById('editDeviceLocation').value.trim();
   const status = document.getElementById('editDeviceStatus').value;
-  if (!name || !type || !location) { alert('Заполните все поля'); return; }
-  const { error } = await db.from('devices').update({ name, type, location, status }).eq('id', id);
-  if (error) { alert('Ошибка: ' + error.message); return; }
-  closeEditDevice();
-  showAlert('deviceAlert', 'Устройство обновлено!', 'success');
+  const description = document.getElementById('editDeviceInfo').value.trim();
+
+  if (!name || !location) { showAlert('editDeviceAlert', 'Заполните обязательные поля', 'error'); return; }
+
+  // Дубль проверка (исключая текущее устройство)
+  const dupe = allDevices.find(d => d.id !== id && (
+    d.name?.toLowerCase() === name.toLowerCase() ||
+    (inv_number && d.inv_number?.toLowerCase() === inv_number.toLowerCase())
+  ));
+  if (dupe) { showAlert('editDeviceAlert', `⚠️ ОТУ с таким наименованием или номером уже есть: "${dupe.name}"`, 'error'); return; }
+
+  const { error } = await db.from('devices').update({ name, brand, inv_number, type, location, status, description }).eq('id', id);
+  if (error) { showAlert('editDeviceAlert', 'Ошибка: ' + error.message, 'error'); return; }
+  closeModal('modalEditDevice');
+  showAlert('deviceAlert', 'ОТУ обновлено!', 'success');
   await loadDevices();
+}
+
+// ── CONTENT ───────────────────────────────────
+let contentData = { basic: '', full: '' };
+
+function switchContentTab(tab) {
+  contentData[currentContentTab] = document.getElementById('contentText').value;
+  currentContentTab = tab;
+  document.getElementById('contentText').value = contentData[tab];
+  document.getElementById('contentTabBasic').className = 'btn btn-' + (tab === 'basic' ? 'primary' : 'secondary') + ' btn-sm';
+  document.getElementById('contentTabFull').className = 'btn btn-' + (tab === 'full' ? 'primary' : 'secondary') + ' btn-sm';
+  document.getElementById('contentTabBasic').style.flex = '1';
+  document.getElementById('contentTabFull').style.flex = '1';
 }
 
 async function openContent(deviceId, deviceName) {
   document.getElementById('contentDeviceName').textContent = deviceName;
   document.getElementById('contentDeviceId').value = deviceId;
-  document.getElementById('basicTitle').value = '';
-  document.getElementById('basicContent').value = '';
-  document.getElementById('fullTitle').value = '';
-  document.getElementById('fullContent').value = '';
+  currentContentTab = 'basic';
+  contentData = { basic: '', full: '' };
+
   const { data } = await db.from('device_info').select('*').eq('device_id', deviceId);
   const basic = data?.find(d => d.level === 'basic');
   const full = data?.find(d => d.level === 'full');
-  if (basic) { document.getElementById('basicTitle').value = basic.title; document.getElementById('basicContent').value = basic.content; }
-  if (full) { document.getElementById('fullTitle').value = full.title; document.getElementById('fullContent').value = full.content; }
+  contentData.basic = basic?.content || '';
+  contentData.full = full?.content || '';
+
+  document.getElementById('contentText').value = contentData.basic;
+  switchContentTab('basic');
   document.getElementById('modalContent').classList.add('show');
 }
 
-function closeContent() { document.getElementById('modalContent').classList.remove('show'); }
-
 async function saveContent() {
+  contentData[currentContentTab] = document.getElementById('contentText').value;
   const deviceId = document.getElementById('contentDeviceId').value;
-  const rows = [
-    { level: 'basic', title: document.getElementById('basicTitle').value.trim(), content: document.getElementById('basicContent').value.trim() },
-    { level: 'full', title: document.getElementById('fullTitle').value.trim(), content: document.getElementById('fullContent').value.trim() }
-  ];
-  for (const row of rows) {
-    if (!row.title) continue;
-    const { data: existing } = await db.from('device_info').select('id').eq('device_id', deviceId).eq('level', row.level).maybeSingle();
+  for (const level of ['basic', 'full']) {
+    const content = contentData[level];
+    if (!content) continue;
+    const { data: existing } = await db.from('device_info').select('id').eq('device_id', deviceId).eq('level', level).maybeSingle();
     if (existing) {
-      await db.from('device_info').update({ title: row.title, content: row.content, updated_at: new Date().toISOString() }).eq('id', existing.id);
+      await db.from('device_info').update({ content, updated_at: new Date().toISOString() }).eq('id', existing.id);
     } else {
-      await db.from('device_info').insert({ device_id: deviceId, level: row.level, title: row.title, content: row.content });
+      await db.from('device_info').insert({ device_id: deviceId, level, title: level, content });
     }
   }
-  closeContent();
+  closeModal('modalContent');
   showAlert('deviceAlert', 'Контент сохранён!', 'success');
 }
 
-function showQR(deviceId) {
-  const base = window.location.href.replace('admin.html', '');
+// ── QR ────────────────────────────────────────
+function showQR(deviceId, deviceName) {
+  const base = window.location.href.replace(/admin\.html.*/, '');
   const url = `${base}device.html?id=${deviceId}`;
-  document.getElementById('qrDeviceUrl').textContent = url;
-  document.getElementById('qrContainer').innerHTML = '';
-  new QRCode(document.getElementById('qrContainer'), {
+  document.getElementById('qrDeviceName').textContent = deviceName;
+  document.getElementById('qrDeviceId').textContent = deviceId;
+  document.getElementById('qrcode').innerHTML = '';
+  new QRCode(document.getElementById('qrcode'), {
     text: url, width: 220, height: 220,
-    colorDark: '#000000', colorLight: '#ffffff',
+    colorDark: '#003399', colorLight: '#ffffff',
     correctLevel: QRCode.CorrectLevel.M
   });
   document.getElementById('modalQR').classList.add('show');
 }
 
-function closeQR() { document.getElementById('modalQR').classList.remove('show'); }
-
-function downloadQR() {
-  const canvas = document.querySelector('#qrContainer canvas');
-  if (!canvas) { alert('QR ещё не готов, подождите секунду'); return; }
-  const link = document.createElement('a');
-  link.download = 'qrcode.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
+function printQR() {
+  const canvas = document.querySelector('#qrcode canvas');
+  if (!canvas) return;
+  const win = window.open('');
+  win.document.write(`<html><body style="text-align:center;padding:20px;font-family:Arial;">
+    <img src="${document.querySelector('#qrcode img')?.src || canvas.toDataURL()}" style="width:200px;"><br>
+    <b>${document.getElementById('qrDeviceName').textContent}</b><br>
+    <small>Intergas Central Asia</small>
+  </body></html>`);
+  win.print();
 }
 
+// ── FILES ─────────────────────────────────────
+async function openFiles(deviceId, deviceName) {
+  document.getElementById('filesDeviceName').textContent = deviceName;
+  document.getElementById('filesDeviceId').value = deviceId;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileVisibleToWorker').checked = false;
+  document.getElementById('modalFiles').classList.add('show');
+  await loadFiles(deviceId);
+}
+
+async function loadFiles(deviceId) {
+  const id = deviceId || document.getElementById('filesDeviceId').value;
+  const container = document.getElementById('filesList');
+  const { data, error } = await db.from('device_files').select('*').eq('device_id', id).order('uploaded_at', { ascending: false });
+  if (error || !data?.length) { container.innerHTML = '<p class="text-muted">Файлов нет</p>'; return; }
+
+  container.innerHTML = data.map(f => {
+    const icon = f.file_type?.includes('pdf') ? '📄' : f.file_type?.includes('image') ? '🖼' : '📎';
+    const badge = f.visible_to_workers
+      ? '<span style="font-size:11px;background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:2px 8px;border-radius:100px;">👷 видно персоналу</span>'
+      : '<span style="font-size:11px;background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);padding:2px 8px;border-radius:100px;">🔒 только ИТР+</span>';
+    const url = `https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/${f.file_path}`;
+    return `<div class="card" style="margin-bottom:8px;padding:12px;">
+      <div class="flex-between">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:22px;">${icon}</span>
+          <div>
+            <div style="font-weight:600;font-size:13px;">${f.name}</div>
+            <div style="margin-top:3px;">${badge}</div>
+          </div>
+        </div>
+        <div class="flex" style="gap:4px;">
+          <button class="btn btn-secondary btn-sm" onclick="toggleWorkerAccess('${f.id}', ${f.visible_to_workers})">${f.visible_to_workers ? '🔒 Скрыть' : '👷 Открыть'}</button>
+          <a href="${url}" target="_blank" class="btn btn-secondary btn-sm">👁</a>
+          <button class="btn btn-danger btn-sm" onclick="deleteFile('${f.id}', '${f.file_path}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function uploadFile(input) {
+  const file = input.files[0];
+  const deviceId = document.getElementById('filesDeviceId').value;
+  if (!file) return;
+  if (file.size > 20 * 1024 * 1024) { showAlert('filesAlert', 'Файл не должен превышать 20MB', 'error'); return; }
+
+  showAlert('filesAlert', '⏳ Загружаем...', 'success');
+  const ext = file.name.split('.').pop();
+  const filePath = `${deviceId}/${Date.now()}.${ext}`;
+  const { error: upErr } = await db.storage.from('device-files').upload(filePath, file);
+  if (upErr) { showAlert('filesAlert', 'Ошибка: ' + upErr.message, 'error'); return; }
+
+  const visible = document.getElementById('fileVisibleToWorker').checked;
+  await db.from('device_files').insert({ device_id: deviceId, name: file.name, file_path: filePath, file_type: file.type, visible_to_workers: visible });
+  input.value = '';
+  showAlert('filesAlert', `✅ ${file.name} загружен!`, 'success');
+  await loadFiles(deviceId);
+}
+
+async function toggleWorkerAccess(fileId, current) {
+  await db.from('device_files').update({ visible_to_workers: !current }).eq('id', fileId);
+  await loadFiles();
+}
+
+async function deleteFile(id, path) {
+  if (!confirm('Удалить файл?')) return;
+  await db.storage.from('device-files').remove([path]);
+  await db.from('device_files').delete().eq('id', id);
+  await loadFiles();
+}
+
+// ── USERS ─────────────────────────────────────
 async function loadUsers() {
   const container = document.getElementById('userList');
   container.innerHTML = '<div class="loading">Загрузка...</div>';
   const { data, error } = await db.from('users').select('*').order('full_name');
   if (error) { container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`; return; }
   allUsers = data || [];
-  document.getElementById('searchUsers').value = '';
   renderUsers(allUsers);
+}
+
+function filterUsers() {
+  const q = document.getElementById('searchUsers').value.toLowerCase();
+  const r = document.getElementById('filterRole').value;
+  renderUsers(allUsers.filter(u =>
+    (!q || u.full_name?.toLowerCase().includes(q) || u.iin?.includes(q)) &&
+    (!r || u.role === r)
+  ));
 }
 
 function renderUsers(users) {
   const container = document.getElementById('userList');
   document.getElementById('userCount').textContent = `${users.length} из ${allUsers.length}`;
-  if (!users.length) { container.innerHTML = '<p class="text-muted">Ничего не найдено</p>'; return; }
-  container.innerHTML = `
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>ФИО</th><th>ИИН</th><th>Роль</th><th>Действия</th></tr></thead>
-        <tbody>
-          ${users.map(u => {
-            const isSelf = u.id === currentUserId;
-            const roleOptions = ['admin','supervisor','worker']
-              .filter(r => r !== u.role)
-              .map(r => `<option value="${r}">${roleLabel(r)}</option>`)
-              .join('');
-            return `<tr>
-              <td>${u.full_name}${isSelf ? ' <span style="color:var(--accent);font-size:11px;">(вы)</span>' : ''}</td>
-              <td class="text-mono">${u.iin}</td>
-              <td><span class="role-badge role-${u.role}">${roleLabel(u.role)}</span></td>
-              <td>
-                ${isSelf ? '<span class="text-muted" style="font-size:12px;">нельзя изменить</span>' : `
-                <div class="flex" style="flex-wrap:wrap;">
-                  <select style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;" onchange="changeRole('${u.id}', this.value)">
-                    <option value="">→ Роль</option>${roleOptions}
-                  </select>
-                  <button class="btn btn-secondary btn-sm" onclick="resetUserPassword('${u.id}', '${u.full_name.replace(/'/g,"\\'")}')">🔑 Пароль</button>
-                  <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}', '${u.full_name.replace(/'/g,"\\'")}')">✕</button>
-                </div>`}
-              </td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
+  if (!users.length) { container.innerHTML = '<p class="text-muted" style="padding:20px;">Ничего не найдено</p>'; return; }
 
-function roleLabel(r) {
-  return { admin: 'admin', supervisor: 'начальник', worker: 'рабочий' }[r] || r;
+  container.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>ФИО</th><th>ИИН</th><th>Роль</th><th>Действия</th></tr></thead>
+    <tbody>
+      ${users.map(u => {
+        const isSelf = u.id === currentUser?.id;
+        return `<tr>
+          <td style="font-weight:500;">${u.full_name}${isSelf ? ' <span style="color:var(--accent);font-size:11px;">(вы)</span>' : ''}</td>
+          <td style="font-family:var(--font-mono);font-size:12px;">${u.iin}</td>
+          <td><span class="role-badge ${roleBadgeClass(u.role)}">${roleLabel(u.role)}</span></td>
+          <td>
+            ${isSelf ? '<span class="text-muted" style="font-size:12px;">нельзя изменить</span>' : `
+            <div class="flex" style="flex-wrap:wrap;gap:4px;">
+              <button class="btn btn-secondary btn-sm" onclick="openEditUser('${u.id}')">✏</button>
+              <button class="btn btn-secondary btn-sm" onclick="resetUserPassword('${u.id}', '${u.full_name.replace(/'/g,"\\'")}')">🔑</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}', '${u.full_name.replace(/'/g,"\\'")}')">✕</button>
+            </div>`}
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
 }
 
 async function addUser() {
@@ -284,229 +418,123 @@ async function addUser() {
   const { error } = await db.from('users').insert({ iin, full_name, password_hash, role });
   btn.disabled = false; btn.textContent = '+ Добавить';
   if (error) {
-    if (error.code === '23505') { showAlert('userAlert', 'Пользователь с таким ИИН уже существует', 'error'); }
-    else { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); }
+    showAlert('userAlert', error.code === '23505' ? 'Пользователь с таким ИИН уже существует' : 'Ошибка: ' + error.message, 'error');
     return;
   }
-  showAlert('userAlert', `${full_name} добавлен!`, 'success');
-  document.getElementById('newUserIin').value = '';
-  document.getElementById('newUserName').value = '';
-  document.getElementById('newUserPassword').value = '';
+  showAlert('userAlert', `✅ ${full_name} добавлен`, 'success');
+  ['newUserIin','newUserName','newUserPassword'].forEach(id => document.getElementById(id).value = '');
   await loadUsers();
 }
 
-async function changeRole(id, newRole) {
-  if (!newRole) return;
-  if (id === currentUserId) { showAlert('userAlert', 'Нельзя изменить свою роль', 'error'); await loadUsers(); return; }
-  const { error } = await db.from('users').update({ role: newRole }).eq('id', id);
-  if (error) { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); return; }
-  showAlert('userAlert', 'Роль изменена', 'success');
+function openEditUser(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('editUserId').value = id;
+  document.getElementById('editUserName').value = u.full_name;
+  document.getElementById('editUserRole').value = u.role;
+  document.getElementById('editUserPassword').value = '';
+  document.getElementById('modalEditUser').classList.add('show');
+}
+
+async function saveEditUser() {
+  const id = document.getElementById('editUserId').value;
+  const full_name = document.getElementById('editUserName').value.trim();
+  const role = document.getElementById('editUserRole').value;
+  const password = document.getElementById('editUserPassword').value.trim();
+  if (!full_name) { showAlert('editUserAlert', 'Введите ФИО', 'error'); return; }
+  const upd = { full_name, role };
+  if (password) upd.password_hash = password;
+  const { error } = await db.from('users').update(upd).eq('id', id);
+  if (error) { showAlert('editUserAlert', 'Ошибка: ' + error.message, 'error'); return; }
+  closeModal('modalEditUser');
+  showAlert('userAlert', 'Пользователь обновлён', 'success');
   await loadUsers();
 }
 
 async function deleteUser(id, name) {
-  if (id === currentUserId) { showAlert('userAlert', 'Нельзя удалить самого себя', 'error'); return; }
-  if (!confirm(`Удалить пользователя "${name}"?`)) return;
+  if (id === currentUser?.id) { showAlert('userAlert', 'Нельзя удалить самого себя', 'error'); return; }
+  if (!confirm(`Удалить "${name}"?`)) return;
   const { error } = await db.from('users').delete().eq('id', id);
   if (error) { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); return; }
   showAlert('userAlert', 'Пользователь удалён', 'success');
   await loadUsers();
 }
 
-function openImport() { document.getElementById('modalImport').classList.add('show'); }
-function closeImport() { document.getElementById('modalImport').classList.remove('show'); }
+async function resetUserPassword(userId, name) {
+  const p = prompt(`Новый пароль для "${name}":`);
+  if (!p || p.length < 4) { showAlert('userAlert', 'Пароль минимум 4 символа', 'error'); return; }
+  const { error } = await db.from('users').update({ password_hash: p }).eq('id', userId);
+  if (error) { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); return; }
+  showAlert('userAlert', `Пароль для ${name} изменён`, 'success');
+}
 
-function exportExcel() {
-  if (!allUsers.length) { showAlert('userAlert', 'Нет данных для экспорта', 'error'); return; }
-  const XLSX = window.XLSX;
-  const rows = allUsers.map(u => ({ 'ИИН': u.iin, 'ФИО': u.full_name, 'Пароль': u.password_hash, 'Роль': u.role, 'Телефон': u.phone || '' }));
+function exportUsers() {
+  if (!allUsers.length) { showAlert('userAlert', 'Нет данных', 'error'); return; }
+  const rows = allUsers.map(u => ({ 'ИИН': u.iin, 'ФИО': u.full_name, 'Роль': roleLabel(u.role) }));
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Пользователи');
-  XLSX.writeFile(wb, 'пользователи.xlsx');
+  XLSX.writeFile(wb, 'пользователи_otu.xlsx');
 }
 
-async function resetUserPassword(userId, name) {
-  const newPass = prompt(`Новый пароль для "${name}":`);
-  if (!newPass || newPass.length < 4) { showAlert('userAlert', 'Пароль минимум 4 символа', 'error'); return; }
-  const { error } = await db.from('users').update({ password_hash: newPass }).eq('id', userId);
-  if (error) { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); return; }
-  showAlert('userAlert', `Пароль для ${name} изменён`, 'success');
-  await loadUsers();
-}
-
-async function resetAllPasswords() {
-  const newPass = prompt('Установить всем одинаковый пароль:');
-  if (!newPass || newPass.length < 4) { showAlert('userAlert', 'Пароль минимум 4 символа', 'error'); return; }
-  if (!confirm(`Установить пароль всем ${allUsers.length} пользователям?`)) return;
-  const { error } = await db.from('users').update({ password_hash: newPass }).neq('id', currentUserId);
-  if (error) { showAlert('userAlert', 'Ошибка: ' + error.message, 'error'); return; }
-  showAlert('userAlert', 'Пароль изменён для всех!', 'success');
-  await loadUsers();
-}
-
-async function importExcel() {
-  const file = document.getElementById('excelFile').files[0];
-  if (!file) { showAlert('importAlert', 'Выберите файл', 'error'); return; }
-  const XLSX = window.XLSX;
+async function importUsers(input) {
+  const file = input.files[0];
+  if (!file) return;
   const reader = new FileReader();
-  reader.onload = async function(e) {
+  reader.onload = async e => {
     try {
-      const workbook = XLSX.read(e.target.result, { type: 'binary' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet);
-      if (!rows.length) { showAlert('importAlert', 'Файл пустой', 'error'); return; }
-      const preview = rows.slice(0, 3).map(r => JSON.stringify(r)).join('\n');
-      document.getElementById('importPreview').textContent = `Найдено строк: ${rows.length}\nПример первых 3:\n${preview}`;
-      const roleMap = document.getElementById('importRole').value;
-      const passwordDefault = document.getElementById('importPassword').value || '1234';
+      const wb = XLSX.read(e.target.result, { type: 'binary' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
       const users = rows.map(r => ({
-        iin: String(r['ИИН'] || r['иин'] || r['iin'] || r['IIN'] || '').replace(/\D/g, '').slice(0, 12),
-        full_name: String(r['ФИО'] || r['фио'] || r['Имя'] || r['full_name'] || r['name'] || '').trim(),
-        password_hash: String(r['Пароль'] || r['пароль'] || r['password'] || passwordDefault),
-        role: String(r['Роль'] || r['роль'] || r['role'] || roleMap)
+        iin: String(r['ИИН'] || r['iin'] || '').replace(/\D/g,'').slice(0,12),
+        full_name: String(r['ФИО'] || r['full_name'] || '').trim(),
+        password_hash: String(r['Пароль'] || r['password'] || '1234'),
+        role: String(r['Роль'] || r['role'] || 'worker')
       })).filter(u => u.iin.length === 12 && u.full_name);
-      if (!users.length) { showAlert('importAlert', 'Не найдено корректных строк. Проверьте заголовки: ИИН, ФИО, Пароль, Роль', 'error'); return; }
-      document.getElementById('importPreview').textContent += `\n\nГотово к загрузке: ${users.length} пользователей`;
-      const btn = document.getElementById('importBtn');
-      btn.disabled = true; btn.textContent = 'Загружаем...';
-      let success = 0, errors = 0;
+      if (!users.length) { showAlert('userAlert', 'Не найдено корректных строк', 'error'); return; }
+      let ok = 0;
       for (let i = 0; i < users.length; i += 100) {
-        const batch = users.slice(i, i + 100);
-        const { error } = await db.from('users').upsert(batch, { onConflict: 'iin', ignoreDuplicates: false });
-        if (error) { errors += batch.length; } else { success += batch.length; }
-        btn.textContent = `Загружено ${Math.min(i + 100, users.length)} из ${users.length}...`;
+        const { error } = await db.from('users').upsert(users.slice(i, i+100), { onConflict: 'iin' });
+        if (!error) ok += Math.min(100, users.length - i);
       }
-      btn.disabled = false; btn.textContent = 'Загрузить из Excel';
-      showAlert('importAlert', `✅ Загружено: ${success}, ошибок: ${errors}`, success > 0 ? 'success' : 'error');
-      if (success > 0) { await loadUsers(); }
-    } catch(err) {
-      showAlert('importAlert', 'Ошибка чтения файла: ' + err.message, 'error');
-    }
+      showAlert('userAlert', `✅ Импортировано: ${ok} из ${users.length}`, 'success');
+      await loadUsers();
+    } catch(err) { showAlert('userAlert', 'Ошибка: ' + err.message, 'error'); }
   };
   reader.readAsBinaryString(file);
 }
 
+// ── LOGS ──────────────────────────────────────
 async function loadLogs() {
-  const container = document.getElementById('logsList');
-  container.innerHTML = '<div class="loading">Загрузка...</div>';
-  const { data, error } = await db.from('scan_logs').select('scanned_at, devices(name), users(full_name, role)').order('scanned_at', { ascending: false }).limit(500);
-  if (error) { container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`; return; }
+  const tbody = document.getElementById('logsBody');
+  tbody.innerHTML = '<tr><td colspan="4" class="loading">Загрузка...</td></tr>';
+  const { data, error } = await db.from('scan_logs')
+    .select('scanned_at, devices(name), users(full_name, role)')
+    .order('scanned_at', { ascending: false }).limit(500);
+  if (error) { tbody.innerHTML = `<tr><td colspan="4" style="color:var(--red)">Ошибка: ${error.message}</td></tr>`; return; }
   allLogs = data || [];
-  const deviceNames = [...new Set(allLogs.map(l => l.devices?.name).filter(Boolean))];
-  const deviceSelect = document.getElementById('filterLogDevice');
-  deviceSelect.innerHTML = '<option value="">Все устройства</option>' + deviceNames.map(n => `<option value="${n}">${n}</option>`).join('');
-  document.getElementById('searchLogs').value = '';
-  document.getElementById('filterLogDevice').value = '';
-  document.getElementById('filterLogRole').value = '';
   renderLogs(allLogs);
 }
 
+function filterLogs() {
+  const q = document.getElementById('searchLogs').value.toLowerCase();
+  const r = document.getElementById('filterLogsRole').value;
+  renderLogs(allLogs.filter(l =>
+    (!q || l.users?.full_name?.toLowerCase().includes(q) || l.devices?.name?.toLowerCase().includes(q)) &&
+    (!r || l.users?.role === r)
+  ));
+}
+
 function renderLogs(logs) {
-  const container = document.getElementById('logsList');
-  document.getElementById('logCount').textContent = `${logs.length} из ${allLogs.length}`;
-  if (!logs.length) { container.innerHTML = '<p class="text-muted">Ничего не найдено</p>'; return; }
-  container.innerHTML = `
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Время</th><th>Устройство</th><th>Пользователь</th><th>Роль</th></tr></thead>
-        <tbody>
-          ${logs.map(l => `
-            <tr>
-              <td>${new Date(l.scanned_at).toLocaleString('ru')}</td>
-              <td>${l.devices?.name || '—'}</td>
-              <td>${l.users?.full_name || '—'}</td>
-              <td><span class="role-badge role-${l.users?.role}">${roleLabel(l.users?.role || '')}</span></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
+  const tbody = document.getElementById('logsBody');
+  if (!logs.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-muted" style="padding:16px;">Нет данных</td></tr>'; return; }
+  tbody.innerHTML = logs.map(l => `
+    <tr>
+      <td>${new Date(l.scanned_at).toLocaleString('ru')}</td>
+      <td>${l.devices?.name || '—'}</td>
+      <td>${l.users?.full_name || '—'}</td>
+      <td><span class="role-badge ${roleBadgeClass(l.users?.role || '')}">${roleLabel(l.users?.role || '—')}</span></td>
+    </tr>`).join('');
 }
 
-function showAlert(id, msg, type) {
-  const el = document.getElementById(id);
-  el.textContent = msg;
-  el.className = `alert alert-${type} show`;
-  setTimeout(() => el.classList.remove('show'), 5000);
-}
-
-// ── FILES ──
-async function openFiles(deviceId, deviceName) {
-  document.getElementById('filesDeviceName').textContent = deviceName;
-  document.getElementById('filesDeviceId').value = deviceId;
-  document.getElementById('fileInput').value = '';
-  document.getElementById('visibleToWorkers').checked = false;
-  document.getElementById('modalFiles').classList.add('show');
-  await loadFiles(deviceId);
-}
-
-function closeFiles() { document.getElementById('modalFiles').classList.remove('show'); }
-
-async function loadFiles(deviceId) {
-  const container = document.getElementById('filesList');
-  const id = deviceId || document.getElementById('filesDeviceId').value;
-  const { data, error } = await db.from('device_files').select('*').eq('device_id', id).order('uploaded_at', { ascending: false });
-  if (error || !data || !data.length) { container.innerHTML = '<p class="text-muted">Файлов нет</p>'; return; }
-  container.innerHTML = data.map(f => {
-    const icon = f.file_type.includes('pdf') ? '📄' : f.file_type.includes('word') || f.name.endsWith('.docx') ? '📝' : f.file_type.includes('sheet') || f.name.endsWith('.xlsx') ? '📊' : f.file_type.includes('image') ? '🖼' : '📎';
-    const workerBadge = f.visible_to_workers
-      ? '<span style="font-size:11px;background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:2px 8px;border-radius:100px;">👷 видно рабочим</span>'
-      : '<span style="font-size:11px;background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);padding:2px 8px;border-radius:100px;">🔒 только admin/начальник</span>';
-    return `<div class="card" style="margin-bottom:8px;">
-      <div class="flex-between">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:24px;">${icon}</span>
-          <div>
-            <div style="font-weight:600;font-size:14px;">${f.name}</div>
-            <div style="margin-top:4px;">${workerBadge}</div>
-            <div class="text-muted">${new Date(f.uploaded_at).toLocaleDateString('ru')}</div>
-          </div>
-        </div>
-        <div class="flex" style="flex-wrap:wrap;gap:4px;">
-          <button class="btn btn-secondary btn-sm" onclick="toggleWorkerAccess('${f.id}', ${f.visible_to_workers})">${f.visible_to_workers ? '🔒 Скрыть' : '👷 Открыть'}</button>
-          <a href="${getFileUrl(f.file_path)}" target="_blank" class="btn btn-secondary btn-sm">👁</a>
-          <a href="${getFileUrl(f.file_path)}" download="${f.name}" class="btn btn-secondary btn-sm">⬇</a>
-          <button class="btn btn-danger btn-sm" onclick="deleteFile('${f.id}', '${f.file_path}')">✕</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function getFileUrl(path) {
-  return `https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/${path}`;
-}
-
-async function uploadFile() {
-  const file = document.getElementById('fileInput').files[0];
-  const deviceId = document.getElementById('filesDeviceId').value;
-  if (!file) { showAlert('filesAlert', 'Выберите файл', 'error'); return; }
-  if (file.size > 20 * 1024 * 1024) { showAlert('filesAlert', 'Файл не должен превышать 20MB', 'error'); return; }
-  const btn = document.getElementById('uploadBtn');
-  btn.disabled = true; btn.textContent = 'Загружаем...';
-  const ext = file.name.split(".").pop();
-  const safeName = Date.now() + "." + ext;
-  const filePath = `${deviceId}/${safeName}`;
-  const { error: uploadError } = await db.storage.from('device-files').upload(filePath, file);
-  if (uploadError) { btn.disabled = false; btn.textContent = '⬆ Загрузить'; showAlert('filesAlert', 'Ошибка загрузки: ' + uploadError.message, 'error'); return; }
-  const visibleToWorkers = document.getElementById('visibleToWorkers').checked;
-  await db.from('device_files').insert({ device_id: deviceId, name: file.name, file_path: filePath, file_type: file.type, visible_to_workers: visibleToWorkers });
-  btn.disabled = false; btn.textContent = '⬆ Загрузить';
-  document.getElementById('fileInput').value = '';
-  document.getElementById('visibleToWorkers').checked = false;
-  showAlert('filesAlert', `${file.name} загружен!`, 'success');
-  await loadFiles(deviceId);
-}
-
-async function toggleWorkerAccess(fileId, currentValue) {
-  const { error } = await db.from('device_files').update({ visible_to_workers: !currentValue }).eq('id', fileId);
-  if (error) { showAlert('filesAlert', 'Ошибка: ' + error.message, 'error'); return; }
-  await loadFiles(document.getElementById('filesDeviceId').value);
-}
-
-async function deleteFile(id, path) {
-  if (!confirm('Удалить файл?')) return;
-  await db.storage.from('device-files').remove([path]);
-  await db.from('device_files').delete().eq('id', id);
-  await loadFiles(document.getElementById('filesDeviceId').value);
-}
+document.addEventListener('DOMContentLoaded', initAdmin);
