@@ -3,78 +3,77 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Вход в систему</title>
+  <title>Система QR-учёта ОТУ — Вход</title>
   <link rel="stylesheet" href="css/style.css">
+  <style>
+    body { background: linear-gradient(135deg, #e8f0fa 0%, #f0f4f8 100%); }
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: var(--shadow-lg);
+    }
+    .login-header {
+      background: var(--accent);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .login-header img { height: 48px; margin-bottom: 10px; }
+    .login-header-title { color: #fff; font-size: 16px; font-weight: 700; line-height: 1.3; }
+    .login-header-sub { color: rgba(255,255,255,0.8); font-size: 12px; margin-top: 4px; }
+  </style>
 </head>
 <body>
   <div class="login-wrap">
-    <div class="login-logo">QR<span style="color:var(--text)">MARK</span></div>
-    <div class="login-sub">Система цифровой маркировки устройств</div>
+    <div class="login-card">
+      <div class="login-header">
+        <img src="data:image/png;base64,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" alt="ICA">
+        <div class="login-header-title">Система QR-учёта ОТУ</div>
+        <div class="login-header-sub">Intergas Central Asia</div>
+      </div>
 
-    <div class="alert alert-error" id="error">Неверный ИИН или пароль</div>
+      <div class="alert alert-error show" id="error" style="display:none;"></div>
 
-    <div class="form-group">
-      <label>ИИН (12 цифр)</label>
-      <input
-        type="text"
-        id="iin"
-        inputmode="numeric"
-        maxlength="12"
-        placeholder="000000000000"
-        autocomplete="off"
-      >
+      <div class="form-group">
+        <label>ИИН (12 цифр)</label>
+        <input type="text" id="iin" inputmode="numeric" maxlength="12" placeholder="000000000000" autocomplete="off">
+      </div>
+
+      <div class="form-group">
+        <label>Пароль</label>
+        <input type="password" id="password" placeholder="••••••••">
+      </div>
+
+      <button class="btn btn-primary" id="loginBtn" onclick="login()">Войти в систему</button>
+
+      <a href="forgot.html" style="display:block;text-align:center;margin-top:16px;color:var(--text-muted);font-size:13px;text-decoration:none;">
+        Забыли пароль?
+      </a>
     </div>
-
-    <div class="form-group">
-      <label>Пароль</label>
-      <input type="password" id="password" placeholder="••••••••">
-    </div>
-
-    <button class="btn btn-primary" id="loginBtn" onclick="login()">
-      Войти
-    </button>
-
-    <a href="forgot.html" style="display:block;text-align:center;margin-top:16px;color:var(--text-muted);font-family:var(--font-mono);font-size:13px;text-decoration:none;">
-      Забыл пароль?
-    </a>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase.js"></script>
   <script src="js/auth.js"></script>
   <script>
-    // Если уже авторизован — редирект
+    const errorEl = document.getElementById('error');
     if (getUser()) window.location.href = 'admin.html';
 
-    // Войти по Enter
-    document.getElementById('password').addEventListener('keydown', e => {
-      if (e.key === 'Enter') login();
-    });
-
-    // Валидация ИИН в реальном времени
-    document.getElementById('iin').addEventListener('input', function() {
-      this.value = this.value.replace(/\D/g, '');
-    });
+    document.getElementById('password').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
+    document.getElementById('iin').addEventListener('input', function() { this.value = this.value.replace(/\D/g,''); });
 
     async function login() {
       const iin = document.getElementById('iin').value.trim();
       const password = document.getElementById('password').value.trim();
-      const errorEl = document.getElementById('error');
       const btn = document.getElementById('loginBtn');
 
-      errorEl.classList.remove('show');
+      errorEl.style.display = 'none';
 
-      if (iin.length !== 12) {
-        errorEl.textContent = 'ИИН должен содержать ровно 12 цифр';
-        errorEl.classList.add('show');
-        return;
-      }
-
-      if (!password) {
-        errorEl.textContent = 'Введите пароль';
-        errorEl.classList.add('show');
-        return;
-      }
+      if (iin.length !== 12) { showError('ИИН должен содержать ровно 12 цифр'); return; }
+      if (!password) { showError('Введите пароль'); return; }
 
       btn.textContent = 'Проверка...';
       btn.disabled = true;
@@ -86,22 +85,20 @@
         .eq('password_hash', password)
         .single();
 
-      btn.textContent = 'Войти';
+      btn.textContent = 'Войти в систему';
       btn.disabled = false;
 
-      if (error || !data) {
-        errorEl.textContent = 'Неверный ИИН или пароль';
-        errorEl.classList.add('show');
-        return;
-      }
+      if (error || !data) { showError('Неверный ИИН или пароль'); return; }
 
       setUser(data);
+      const adminRoles = ['superadmin', 'admin', 'chief', 'itr'];
+      window.location.href = adminRoles.includes(data.role) ? 'admin.html' : 'device.html';
+    }
 
-      if (data.role === 'admin') {
-        window.location.href = 'admin.html';
-      } else {
-        window.location.href = 'device.html';
-      }
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+      errorEl.className = 'alert alert-error show';
     }
   </script>
 </body>
