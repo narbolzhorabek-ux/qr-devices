@@ -3,48 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Админ-панель</title>
+  <title>Система QR-учёта ОТУ</title>
   <link rel="stylesheet" href="css/style.css">
   <style>
-    .search-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-    }
-    .search-bar input, .search-bar select {
-      flex: 1;
-      min-width: 160px;
-      padding: 10px 14px;
-      font-size: 14px;
-    }
-    .count-badge {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      color: var(--text-muted);
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      padding: 4px 10px;
-      border-radius: 100px;
-      white-space: nowrap;
-    }
+    .search-bar input, .search-bar select { flex:1; min-width:140px; padding:9px 12px; font-size:14px; }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+    @media(max-width:600px){ .grid-2,.grid-3{ grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
 <div class="page-wide">
+
+  <!-- HEADER -->
   <div class="header">
-    <div class="logo">QRMARK <span style="font-size:14px;color:var(--text-muted);font-family:var(--font-mono);">ADMIN</span></div>
-    <div style="display:flex;align-items:center;gap:12px;">
-      <span class="header-user" id="userName"></span>
-      <button class="btn btn-secondary btn-sm" onclick="logout()">Выйти</button>
+    <div class="logo">
+      <img src="data:image/png;base64,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" alt="ICA">
+      <div class="logo-divider"></div>
+      <div>
+        <div style="font-size:15px;font-weight:700;">Система QR-учёта ОТУ</div>
+        <div class="logo-sub">Intergas Central Asia</div>
+      </div>
+    </div>
+    <div class="header-user">
+      <span id="userName"></span>
+      <span id="userRoleBadge"></span>
+      <button class="btn btn-secondary btn-sm" style="color:#fff;border-color:rgba(255,255,255,0.4);background:transparent;" onclick="logout()">Выйти</button>
     </div>
   </div>
 
-  <div class="tabs">
-    <button class="tab active" id="tab-devices" onclick="switchTab('devices')">📦 Устройства</button>
+  <!-- TABS -->
+  <div class="tabs" id="mainTabs">
+    <button class="tab active" id="tab-devices" onclick="switchTab('devices')">📋 ОТУ</button>
     <button class="tab" id="tab-users" onclick="switchTab('users')">👥 Пользователи</button>
-    <button class="tab" id="tab-logs" onclick="switchTab('logs')">📋 Логи</button>
+    <button class="tab" id="tab-logs" onclick="switchTab('logs')">📊 Логи</button>
     <button class="tab" id="tab-maintenance" onclick="switchTab('maintenance')">🔧 ТО</button>
   </div>
 
@@ -52,27 +44,55 @@
   <div class="tab-content active" id="content-devices">
     <div class="alert" id="deviceAlert"></div>
 
-    <div class="section-title">Добавить устройство</div>
-    <div class="card">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-group" style="margin:0;"><label>Название</label><input id="newDeviceName" type="text" placeholder="Компрессор КВ-12"></div>
-        <div class="form-group" style="margin:0;"><label>Тип</label><input id="newDeviceType" type="text" placeholder="Компрессор"></div>
-        <div class="form-group" style="margin:0;"><label>Местонахождение</label><input id="newDeviceLocation" type="text" placeholder="Цех №1, зона A"></div>
+    <div class="section-title" id="addDeviceTitle">Регистрация нового ОТУ</div>
+    <div class="card" id="addDeviceCard">
+      <div id="duplicateWarning" class="duplicate-warning">⚠️ ОТУ с таким названием или инвентарным номером уже существует!</div>
+      <div class="grid-2">
+        <div class="form-group" style="margin:0;">
+          <label>Наименование ОТУ *</label>
+          <input id="newDeviceName" type="text" placeholder="Компрессор КВ-100" oninput="checkDuplicate()">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Марка устройства</label>
+          <input id="newDeviceBrand" type="text" placeholder="Atlas Copco GA-15">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Инвентарный номер</label>
+          <input id="newDeviceInvNum" type="text" placeholder="ИНВ-2024-001" oninput="checkDuplicate()">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Тип устройства</label>
+          <input id="newDeviceType" type="text" placeholder="Компрессор">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Местонахождение *</label>
+          <input id="newDeviceLocation" type="text" placeholder="Цех №1, зона A">
+        </div>
         <div class="form-group" style="margin:0;">
           <label>Статус</label>
           <select id="newDeviceStatus">
-            <option value="active">Активно</option>
-            <option value="maintenance">Обслуживание</option>
-            <option value="danger">Опасность</option>
+            <option value="active">✅ Активно</option>
+            <option value="maintenance">🔧 Обслуживание</option>
+            <option value="danger">⚠️ Опасность</option>
           </select>
         </div>
       </div>
-      <button class="btn btn-primary mt-16" onclick="addDevice()">+ Добавить устройство</button>
+      <div class="form-group" style="margin-top:12px;">
+        <label>Общая информация об ОТУ</label>
+        <textarea id="newDeviceInfo" placeholder="Технические характеристики, назначение, особенности эксплуатации..." rows="3"></textarea>
+      </div>
+      <button class="btn btn-primary mt-8" onclick="addDevice()">+ Зарегистрировать ОТУ</button>
     </div>
 
-    <div class="section-title">Список устройств</div>
+    <div class="section-title">Список ОТУ</div>
     <div class="search-bar">
-      <input id="searchDevices" type="text" placeholder="🔍 Поиск по названию, типу, месту...">
+      <input id="searchDevices" type="text" placeholder="🔍 Поиск..." oninput="filterDevices()">
+      <select id="filterStatus" onchange="filterDevices()">
+        <option value="">Все статусы</option>
+        <option value="active">Активно</option>
+        <option value="maintenance">Обслуживание</option>
+        <option value="danger">Опасность</option>
+      </select>
       <span class="count-badge" id="deviceCount">0</span>
     </div>
     <div id="deviceList"><div class="loading">Загрузка...</div></div>
@@ -82,32 +102,43 @@
   <div class="tab-content" id="content-users">
     <div class="alert" id="userAlert"></div>
 
-    <div class="section-title">Добавить пользователя</div>
-    <div class="card">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div class="form-group" style="margin:0;"><label>ФИО</label><input id="newUserName" type="text" placeholder="Иванов Иван Иванович"></div>
-        <div class="form-group" style="margin:0;"><label>ИИН (12 цифр)</label><input id="newUserIin" type="text" inputmode="numeric" maxlength="12" placeholder="000000000000"></div>
-        <div class="form-group" style="margin:0;"><label>Пароль</label><input id="newUserPassword" type="text" placeholder="пароль123"></div>
+    <div class="section-title" id="addUserTitle">Добавить пользователя</div>
+    <div class="card" id="addUserCard">
+      <div class="grid-2">
+        <div class="form-group" style="margin:0;"><label>ФИО *</label><input id="newUserName" type="text" placeholder="Иванов Иван Иванович"></div>
+        <div class="form-group" style="margin:0;"><label>ИИН (12 цифр) *</label><input id="newUserIin" type="text" inputmode="numeric" maxlength="12" placeholder="000000000000"></div>
+        <div class="form-group" style="margin:0;"><label>Пароль *</label><input id="newUserPassword" type="text" placeholder="пароль123"></div>
         <div class="form-group" style="margin:0;">
           <label>Роль</label>
           <select id="newUserRole">
-            <option value="worker">👷 Рабочий — видит инструкцию</option>
-            <option value="supervisor">👔 Начальник — видит всё</option>
-            <option value="admin">⚙️ Администратор — полный доступ</option>
+            <option value="worker">👷 Персонал — только QR-скан</option>
+            <option value="itr">🔧 ИТР — ввод актов, документов</option>
+            <option value="chief">👔 Начальник службы — просмотр, отчёты</option>
+            <option value="admin">⚙️ Администратор — уровень филиала</option>
+            <option value="superadmin">🛡️ Супер-администратор — полный доступ</option>
           </select>
         </div>
       </div>
-      <div class="flex mt-16" style="gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-primary" onclick="addUser()" style="flex:1;">+ Добавить</button>
-        <button class="btn btn-secondary" onclick="openImport()">📥 Из Excel</button>
-        <button class="btn btn-secondary" onclick="exportExcel()">📤 Скачать Excel</button>
-        <button class="btn btn-secondary" onclick="resetAllPasswords()">🔑 Сбросить пароли всем</button>
+      <div class="flex mt-16" style="flex-wrap:wrap;gap:8px;">
+        <button class="btn btn-primary" style="flex:1;min-width:160px;" onclick="addUser()">+ Добавить</button>
+        <label class="btn btn-secondary" style="flex:1;min-width:160px;cursor:pointer;">
+          📥 Импорт Excel <input type="file" accept=".xlsx" style="display:none" onchange="importUsers(this)">
+        </label>
+        <button class="btn btn-secondary btn-sm" onclick="exportUsers()">📤 Экспорт</button>
       </div>
     </div>
 
     <div class="section-title">Список пользователей</div>
     <div class="search-bar">
-      <input id="searchUsers" type="text" placeholder="🔍 Поиск по ФИО, ИИН, роли...">
+      <input id="searchUsers" type="text" placeholder="🔍 Поиск по ФИО, ИИН..." oninput="filterUsers()">
+      <select id="filterRole" onchange="filterUsers()">
+        <option value="">Все роли</option>
+        <option value="superadmin">Супер-администратор</option>
+        <option value="admin">Администратор</option>
+        <option value="chief">Начальник службы</option>
+        <option value="itr">ИТР</option>
+        <option value="worker">Персонал</option>
+      </select>
       <span class="count-badge" id="userCount">0</span>
     </div>
     <div id="userList"><div class="loading">Загрузка...</div></div>
@@ -115,47 +146,54 @@
 
   <!-- ══ LOGS ══ -->
   <div class="tab-content" id="content-logs">
-    <div class="section-title">История сканирований</div>
+    <div class="section-title">Журнал сканирований QR</div>
     <div class="search-bar">
-      <input id="searchLogs" type="text" placeholder="🔍 Поиск по ФИО или устройству...">
-      <select id="filterLogDevice" style="min-width:160px;"><option value="">Все устройства</option></select>
-      <select id="filterLogRole" style="min-width:140px;">
+      <input id="searchLogs" type="text" placeholder="🔍 Поиск..." oninput="filterLogs()">
+      <select id="filterLogsRole" onchange="filterLogs()">
         <option value="">Все роли</option>
-        <option value="admin">admin</option>
-        <option value="supervisor">начальник</option>
-        <option value="worker">рабочий</option>
+        <option value="superadmin">Супер-администратор</option>
+        <option value="admin">Администратор</option>
+        <option value="chief">Начальник службы</option>
+        <option value="itr">ИТР</option>
+        <option value="worker">Персонал</option>
       </select>
-      <span class="count-badge" id="logCount">0</span>
     </div>
-    <div id="logsList"><div class="loading">Загрузка...</div></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Время</th>
+            <th>Устройство</th>
+            <th>Пользователь</th>
+            <th>Роль</th>
+          </tr>
+        </thead>
+        <tbody id="logsBody"><tr><td colspan="4" class="loading">Загрузка...</td></tr></tbody>
+      </table>
+    </div>
   </div>
+
   <!-- ══ MAINTENANCE ══ -->
   <div class="tab-content" id="content-maintenance">
     <div class="alert" id="maintenanceAlert"></div>
 
-    <div class="section-title">Техническое обслуживание</div>
-
-    <!-- Блок времени уведомлений -->
-    <div class="card" style="margin-bottom:16px;border:1px solid var(--border);">
+    <div class="section-title">Настройки уведомлений</div>
+    <div class="card" style="margin-bottom:16px;">
       <div style="font-weight:600;font-size:15px;margin-bottom:4px;">🕐 Время отправки уведомлений</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Edge Function сама проверяет это время каждый час и отправляет в нужный момент</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Уведомления отправляются за 4 дня до ТО и в день ТО</div>
       <div class="alert" id="notifyTimeAlert"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;">
         <div class="form-group" style="margin:0;">
-          <label>Время (по Астане, UTC+6)</label>
-          <input id="notifyTime" type="time" value="12:00" style="font-family:var(--font-mono);font-size:22px;letter-spacing:2px;">
+          <label>Время (по Казахстану, UTC+5)</label>
+          <input id="notifyTime" type="time" value="12:00" style="font-size:20px;font-family:var(--font-mono);">
         </div>
-        <div>
-          <button class="btn btn-primary" onclick="saveNotifyTime()" id="saveNotifyTimeBtn" style="width:100%;height:48px;">💾 Сохранить</button>
-        </div>
-      </div>
-      <div style="margin-top:10px;font-size:12px;color:var(--text-muted);">
-        ℹ️ Уведомления придут за 4 дня до ТО и в день ТО — в указанное время
+        <button class="btn btn-primary" onclick="saveNotifyTime()" id="saveNotifyTimeBtn" style="height:46px;">💾 Сохранить</button>
       </div>
     </div>
+
     <div class="search-bar">
-      <input id="searchMaintenance" type="text" placeholder="🔍 Поиск по названию, типу, месту..." oninput="filterMaintenance()">
-      <select id="filterMaintenanceStatus" style="min-width:160px;" onchange="filterMaintenance()">
+      <input id="searchMaintenance" type="text" placeholder="🔍 Поиск..." oninput="filterMaintenance()">
+      <select id="filterMaintenanceStatus" onchange="filterMaintenance()">
         <option value="">Все</option>
         <option value="overdue">⚠️ Просрочено</option>
         <option value="soon">🟡 Скоро (до 7 дн.)</option>
@@ -165,25 +203,34 @@
     </div>
     <div id="maintenanceList"><div class="loading">Загрузка...</div></div>
   </div>
+
 </div>
+
+<!-- MODAL: Edit Device -->
 <div class="modal-overlay" id="modalEditDevice">
   <div class="modal">
-    <div class="modal-title">Редактировать устройство</div>
+    <div class="modal-title">✏️ Редактировать ОТУ</div>
     <input type="hidden" id="editDeviceId">
-    <div class="form-group"><label>Название</label><input id="editDeviceName" type="text"></div>
-    <div class="form-group"><label>Тип</label><input id="editDeviceType" type="text"></div>
-    <div class="form-group"><label>Местонахождение</label><input id="editDeviceLocation" type="text"></div>
-    <div class="form-group">
-      <label>Статус</label>
-      <select id="editDeviceStatus">
-        <option value="active">Активно</option>
-        <option value="maintenance">Обслуживание</option>
-        <option value="danger">Опасность</option>
-      </select>
+    <div class="alert" id="editDeviceAlert"></div>
+    <div class="grid-2">
+      <div class="form-group"><label>Наименование</label><input id="editDeviceName" type="text"></div>
+      <div class="form-group"><label>Марка</label><input id="editDeviceBrand" type="text"></div>
+      <div class="form-group"><label>Инвентарный номер</label><input id="editDeviceInvNum" type="text"></div>
+      <div class="form-group"><label>Тип</label><input id="editDeviceType" type="text"></div>
+      <div class="form-group"><label>Местонахождение</label><input id="editDeviceLocation" type="text"></div>
+      <div class="form-group">
+        <label>Статус</label>
+        <select id="editDeviceStatus">
+          <option value="active">✅ Активно</option>
+          <option value="maintenance">🔧 Обслуживание</option>
+          <option value="danger">⚠️ Опасность</option>
+        </select>
+      </div>
     </div>
+    <div class="form-group"><label>Общая информация</label><textarea id="editDeviceInfo" rows="3"></textarea></div>
     <div class="flex">
-      <button class="btn btn-primary" onclick="saveDevice()" style="flex:1;">Сохранить</button>
-      <button class="btn btn-secondary" onclick="closeEditDevice()" style="flex:1;">Отмена</button>
+      <button class="btn btn-primary" onclick="saveEditDevice()" style="flex:1;">Сохранить</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalEditDevice')" style="flex:1;">Отмена</button>
     </div>
   </div>
 </div>
@@ -191,17 +238,19 @@
 <!-- MODAL: Content -->
 <div class="modal-overlay" id="modalContent">
   <div class="modal">
-    <div class="modal-title">Контент: <span id="contentDeviceName"></span></div>
+    <div class="modal-title">📄 Контент: <span id="contentDeviceName"></span></div>
     <input type="hidden" id="contentDeviceId">
-    <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);margin-bottom:8px;">👷 BASIC — видит рабочий и начальник</div>
-    <div class="form-group"><label>Заголовок</label><input id="basicTitle" type="text" placeholder="Инструкция по эксплуатации"></div>
-    <div class="form-group"><label>Содержание</label><textarea id="basicContent" placeholder="Инструкция, уровень опасности..."></textarea></div>
-    <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent);margin:12px 0 8px;">🔐 FULL — только admin и начальник</div>
-    <div class="form-group"><label>Заголовок</label><input id="fullTitle" type="text" placeholder="Технический паспорт"></div>
-    <div class="form-group"><label>Содержание</label><textarea id="fullContent" placeholder="Технические данные, история обслуживания..."></textarea></div>
+    <div class="alert" id="contentAlert"></div>
+    <div style="margin-bottom:12px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-secondary btn-sm" id="contentTabBasic" onclick="switchContentTab('basic')" style="flex:1;">👷 Базовый (персонал)</button>
+        <button class="btn btn-secondary btn-sm" id="contentTabFull" onclick="switchContentTab('full')" style="flex:1;">👔 Полный (ИТР+)</button>
+      </div>
+      <textarea id="contentText" rows="8" placeholder="Введите информацию..."></textarea>
+    </div>
     <div class="flex">
       <button class="btn btn-primary" onclick="saveContent()" style="flex:1;">Сохранить</button>
-      <button class="btn btn-secondary" onclick="closeContent()" style="flex:1;">Отмена</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalContent')" style="flex:1;">Закрыть</button>
     </div>
   </div>
 </div>
@@ -209,52 +258,13 @@
 <!-- MODAL: QR -->
 <div class="modal-overlay" id="modalQR">
   <div class="modal" style="text-align:center;">
-    <div class="modal-title">QR-код устройства</div>
-    <div id="qrContainer" style="display:flex;justify-content:center;margin:20px 0;"></div>
-    <p class="text-muted" id="qrDeviceUrl" style="font-size:11px;word-break:break-all;margin-bottom:16px;"></p>
-    <div class="flex">
-      <button class="btn btn-primary" onclick="downloadQR()" style="flex:1;">⬇ Скачать PNG</button>
-      <button class="btn btn-secondary" onclick="closeQR()" style="flex:1;">Закрыть</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL: Excel Import -->
-<div class="modal-overlay" id="modalImport">
-  <div class="modal">
-    <div class="modal-title">📥 Загрузить из Excel</div>
-    <div class="alert" id="importAlert"></div>
-
-    <p class="text-muted" style="margin-bottom:16px;font-size:13px;">
-      Файл Excel должен содержать колонки:<br>
-      <span style="color:var(--accent);font-family:var(--font-mono);">ИИН &nbsp;|&nbsp; ФИО &nbsp;|&nbsp; Пароль &nbsp;|&nbsp; Роль</span><br><br>
-      Колонки Пароль и Роль — необязательны (используются значения ниже).
-    </p>
-
-    <div class="form-group">
-      <label>Файл Excel (.xlsx)</label>
-      <input type="file" id="excelFile" accept=".xlsx,.xls" style="padding:10px;">
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div class="form-group" style="margin:0;">
-        <label>Пароль по умолчанию</label>
-        <input id="importPassword" type="text" placeholder="1234" value="1234">
-      </div>
-      <div class="form-group" style="margin:0;">
-        <label>Роль по умолчанию</label>
-        <select id="importRole">
-          <option value="worker">Рабочий</option>
-          <option value="supervisor">Начальник</option>
-          <option value="admin">Администратор</option>
-        </select>
-      </div>
-    </div>
-
-    <pre id="importPreview" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:11px;color:var(--text-muted);margin:12px 0;max-height:150px;overflow:auto;white-space:pre-wrap;"></pre>
-
-    <div class="flex">
-      <button class="btn btn-primary" id="importBtn" onclick="importExcel()" style="flex:1;">Загрузить из Excel</button>
-      <button class="btn btn-secondary" onclick="closeImport()" style="flex:1;">Отмена</button>
+    <div class="modal-title">📱 QR-код ОТУ</div>
+    <div id="qrDeviceName" style="font-weight:600;margin-bottom:16px;color:var(--text-muted);"></div>
+    <div id="qrcode" style="display:inline-block;padding:16px;background:#fff;border-radius:8px;border:1px solid var(--border);"></div>
+    <div id="qrDeviceId" style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
+    <div class="flex mt-16" style="justify-content:center;">
+      <button class="btn btn-primary" onclick="printQR()" style="max-width:200px;">🖨 Распечатать</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalQR')" style="max-width:200px;">Закрыть</button>
     </div>
   </div>
 </div>
@@ -262,23 +272,47 @@
 <!-- MODAL: Files -->
 <div class="modal-overlay" id="modalFiles">
   <div class="modal">
-    <div class="modal-title">📎 Файлы: <span id="filesDeviceName"></span></div>
+    <div class="modal-title">📎 Файлы ОТУ: <span id="filesDeviceName"></span></div>
     <input type="hidden" id="filesDeviceId">
     <div class="alert" id="filesAlert"></div>
-    <div class="form-group">
-      <label>Загрузить файл (PDF, DOCX, XLSX, изображения)</label>
-      <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.xlsx,.xls,.png,.jpg,.jpeg" style="padding:10px;">
+    <div style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;margin-bottom:16px;cursor:pointer;" onclick="document.getElementById('fileInput').click()">
+      <div style="font-size:24px;">📁</div>
+      <div style="font-size:14px;color:var(--text-muted);margin-top:4px;">Нажмите для загрузки файла (макс. 20MB)</div>
+      <input type="file" id="fileInput" style="display:none" onchange="uploadFile(this)">
     </div>
-    <div class="form-group" style="margin-top:12px;">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <input type="checkbox" id="visibleToWorkers" style="width:18px;height:18px;cursor:pointer;">
-        <span>👷 Видно рабочим</span>
+    <div style="margin-bottom:8px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" id="fileVisibleToWorker" style="width:auto;">
+        <span style="font-size:13px;">Видно персоналу</span>
       </label>
     </div>
-    <button class="btn btn-primary" onclick="uploadFile()" id="uploadBtn">⬆ Загрузить</button>
-    <div class="section-title" style="margin-top:20px;">Прикреплённые файлы</div>
     <div id="filesList"><div class="loading">Загрузка...</div></div>
-    <button class="btn btn-secondary" onclick="closeFiles()" style="margin-top:12px;width:100%;">Закрыть</button>
+    <button class="btn btn-secondary" onclick="closeModal('modalFiles')" style="margin-top:16px;width:100%;">Закрыть</button>
+  </div>
+</div>
+
+<!-- MODAL: Edit User -->
+<div class="modal-overlay" id="modalEditUser">
+  <div class="modal">
+    <div class="modal-title">✏️ Редактировать пользователя</div>
+    <input type="hidden" id="editUserId">
+    <div class="alert" id="editUserAlert"></div>
+    <div class="form-group"><label>ФИО</label><input id="editUserName" type="text"></div>
+    <div class="form-group"><label>Новый пароль (оставьте пустым чтобы не менять)</label><input id="editUserPassword" type="text" placeholder="новый пароль"></div>
+    <div class="form-group">
+      <label>Роль</label>
+      <select id="editUserRole">
+        <option value="worker">👷 Персонал</option>
+        <option value="itr">🔧 ИТР</option>
+        <option value="chief">👔 Начальник службы</option>
+        <option value="admin">⚙️ Администратор</option>
+        <option value="superadmin">🛡️ Супер-администратор</option>
+      </select>
+    </div>
+    <div class="flex">
+      <button class="btn btn-primary" onclick="saveEditUser()" style="flex:1;">Сохранить</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalEditUser')" style="flex:1;">Отмена</button>
+    </div>
   </div>
 </div>
 
@@ -288,32 +322,26 @@
     <div class="modal-title">⚙ Настройки ТО: <span id="msDeviceName"></span></div>
     <input type="hidden" id="msDeviceId">
     <div class="alert" id="msAlert"></div>
-
     <div class="form-group">
       <label>Интервал обслуживания (дней)</label>
       <input id="msInterval" type="number" min="1" max="3650" placeholder="90" oninput="updateNextPreview()">
       <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Например: 15, 30, 90, 180, 365</div>
     </div>
-
     <div class="form-group">
       <label>Дата последнего ТО</label>
       <input id="msLastDate" type="date" oninput="updateNextPreview()">
     </div>
-
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:16px;">
+    <div style="background:var(--accent-light);border:1px solid var(--accent);border-radius:8px;padding:14px;margin-bottom:16px;">
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">📅 Следующее ТО (авторасчёт):</div>
       <div id="msNextPreview" style="font-weight:700;font-size:16px;font-family:var(--font-mono);">—</div>
     </div>
-
     <div class="form-group">
       <label>Email для уведомлений</label>
-      <input id="msEmail" type="email" placeholder="narbolzhorabek@gmail.com">
-      <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Уведомление придёт за 4 дня и в день ТО</div>
+      <input id="msEmail" type="email" placeholder="example@gmail.com">
     </div>
-
     <div class="flex">
       <button class="btn btn-primary" id="msSaveBtn" onclick="saveMaintenanceSettings()" style="flex:1;">Сохранить</button>
-      <button class="btn btn-secondary" onclick="closeMaintenanceSettings()" style="flex:1;">Отмена</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalMaintenance')" style="flex:1;">Отмена</button>
     </div>
   </div>
 </div>
@@ -325,22 +353,19 @@
     <div class="table-wrap">
       <table>
         <thead><tr><th>Дата</th><th>Заметки</th><th>Записано</th></tr></thead>
-        <tbody id="maintenanceLogsBody">
-          <tr><td colspan="3" class="text-muted" style="padding:16px;">Загрузка...</td></tr>
-        </tbody>
+        <tbody id="maintenanceLogsBody"></tbody>
       </table>
     </div>
-    <button class="btn btn-secondary" onclick="closeMaintenanceLogs()" style="margin-top:16px;width:100%;">Закрыть</button>
+    <button class="btn btn-secondary" onclick="closeModal('modalMaintenanceLogs')" style="margin-top:16px;width:100%;">Закрыть</button>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/supabase.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/admin.js"></script>
 <script src="js/maintenance.js"></script>
-<script>initAdmin();</script>
 </body>
 </html>
