@@ -114,8 +114,8 @@
             <option value="worker">👷 Персонал — только QR-скан</option>
             <option value="itr">🔧 ИТР — ввод актов, документов</option>
             <option value="chief">👔 Начальник службы — просмотр, отчёты</option>
-            <option value="admin">⚙️ Администратор — уровень филиала</option>
-            <option value="superadmin">🛡️ Супер-администратор — полный доступ</option>
+            <option value="admin" class="superadmin-only">⚙️ Администратор — уровень филиала</option>
+            <option value="superadmin" class="superadmin-only">🛡️ Супер-администратор — полный доступ</option>
           </select>
         </div>
       </div>
@@ -201,6 +201,10 @@
         <option value="none">Не настроено</option>
       </select>
     </div>
+
+    <!-- Ожидают одобрения (только admin/superadmin) -->
+    <div id="pendingApprovalsWrap" style="display:none;background:var(--yellow-dim);border:2px solid var(--yellow);border-radius:8px;padding:16px;margin-bottom:16px;"></div>
+
     <div id="maintenanceList"><div class="loading">Загрузка...</div></div>
   </div>
 
@@ -305,8 +309,8 @@
         <option value="worker">👷 Персонал</option>
         <option value="itr">🔧 ИТР</option>
         <option value="chief">👔 Начальник службы</option>
-        <option value="admin">⚙️ Администратор</option>
-        <option value="superadmin">🛡️ Супер-администратор</option>
+        <option value="admin" class="superadmin-only">⚙️ Администратор</option>
+        <option value="superadmin" class="superadmin-only">🛡️ Супер-администратор</option>
       </select>
     </div>
     <div class="flex">
@@ -352,11 +356,59 @@
     <div class="modal-title">📋 История ТО: <span id="logsDeviceName"></span></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Дата</th><th>Заметки</th><th>Записано</th></tr></thead>
+        <thead><tr><th>Дата</th><th>Заметки</th><th>Статус</th></tr></thead>
         <tbody id="maintenanceLogsBody"></tbody>
       </table>
     </div>
     <button class="btn btn-secondary" onclick="closeModal('modalMaintenanceLogs')" style="margin-top:16px;width:100%;">Закрыть</button>
+  </div>
+</div>
+
+<!-- MODAL: Отметить ТО выполненным -->
+<div class="modal-overlay" id="modalDone">
+  <div class="modal">
+    <div class="modal-title">✅ Выполнение ТО: <span id="doneModalDeviceName"></span></div>
+    <input type="hidden" id="doneModalDeviceId">
+    <div class="alert" id="doneModalAlert"></div>
+
+    <!-- Документ -->
+    <div style="margin-bottom:16px;">
+      <label style="margin-bottom:8px;display:block;">📄 Акт / документ <span style="color:var(--red);">*</span></label>
+      <div id="doneDocZone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s;" onclick="document.getElementById('doneDocInput').click()">
+        <div style="font-size:24px;">📄</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">Нажмите для загрузки акта</div>
+        <input type="file" id="doneDocInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx" onchange="handleDoneFile(this,'doc')">
+      </div>
+      <div id="doneDocStatus" style="margin-top:6px;font-size:13px;display:none;"></div>
+    </div>
+
+    <!-- Фото -->
+    <div style="margin-bottom:16px;">
+      <label style="margin-bottom:8px;display:block;">📷 Фотография <span style="color:var(--red);">*</span></label>
+      <div id="donePhotoZone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s;" onclick="document.getElementById('donePhotoInput').click()">
+        <div style="font-size:24px;">📷</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">Нажмите для загрузки фото</div>
+        <input type="file" id="donePhotoInput" style="display:none" accept="image/*" onchange="handleDoneFile(this,'photo')">
+      </div>
+      <div id="donePhotoStatus" style="margin-top:6px;font-size:13px;display:none;"></div>
+    </div>
+
+    <!-- Заметки -->
+    <div class="form-group">
+      <label>Заметки о проведённом ТО</label>
+      <textarea id="doneModalNotes" rows="3" placeholder="Что было сделано, выявленные замечания..."></textarea>
+    </div>
+
+    <div id="doneModalHint" style="font-size:12px;color:var(--red);margin-bottom:12px;text-align:center;">
+      ⚠️ Загрузите акт и фотографию чтобы подтвердить
+    </div>
+
+    <div class="flex">
+      <button class="btn btn-primary" id="doneModalConfirmBtn" onclick="confirmDone()" disabled style="flex:1;opacity:0.5;">
+        ✅ Подтвердить выполнение
+      </button>
+      <button class="btn btn-secondary" onclick="closeDoneModal()" style="flex:1;">Отмена</button>
+    </div>
   </div>
 </div>
 
