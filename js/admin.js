@@ -14,13 +14,21 @@ async function initAdmin() {
   const roleEl = document.getElementById('userRoleBadge');
   if (roleEl) roleEl.innerHTML = `<span class="role-badge ${roleBadgeClass(currentUser.role)}">${roleLabel(currentUser.role)}</span>`;
 
-  // Скрыть добавление если нет прав
+  // Только суперадмин видит высокие роли
+  const isSA = isSuperAdmin(currentUser);
+  document.querySelectorAll('.superadmin-only').forEach(el => {
+    el.style.display = isSA ? '' : 'none';
+  });
+
+  // Скрыть добавление ОТУ если нет прав
   if (!isAdmin(currentUser)) {
     const addCard = document.getElementById('addDeviceCard');
     const addTitle = document.getElementById('addDeviceTitle');
     if (addCard) addCard.style.display = 'none';
     if (addTitle) addTitle.style.display = 'none';
   }
+
+  // Скрыть добавление пользователей если нет прав
   if (!isAdmin(currentUser)) {
     const addUserCard = document.getElementById('addUserCard');
     const addUserTitle = document.getElementById('addUserTitle');
@@ -410,9 +418,18 @@ async function addUser() {
   const full_name = document.getElementById('newUserName').value.trim();
   const password_hash = document.getElementById('newUserPassword').value.trim();
   const role = document.getElementById('newUserRole').value;
+
   if (iin.length !== 12) { showAlert('userAlert', 'ИИН должен быть ровно 12 цифр', 'error'); return; }
   if (!full_name) { showAlert('userAlert', 'Введите ФИО', 'error'); return; }
   if (!password_hash) { showAlert('userAlert', 'Введите пароль', 'error'); return; }
+
+  // Защита: только суперадмин может назначать admin/superadmin
+  const highRoles = ['admin', 'superadmin'];
+  if (highRoles.includes(role) && !isSuperAdmin(currentUser)) {
+    showAlert('userAlert', '⛔ Только супер-администратор может назначать эту роль', 'error');
+    return;
+  }
+
   const btn = document.querySelector('[onclick="addUser()"]');
   btn.disabled = true; btn.textContent = 'Сохранение...';
   const { error } = await db.from('users').insert({ iin, full_name, password_hash, role });
@@ -429,10 +446,27 @@ async function addUser() {
 function openEditUser(id) {
   const u = allUsers.find(x => x.id === id);
   if (!u) return;
+
+  // Только суперадмин может редактировать других суперадминов и админов
+  if (['superadmin','admin'].includes(u.role) && !isSuperAdmin(currentUser)) {
+    showAlert('userAlert', '⛔ Нет прав для редактирования этого пользователя', 'error');
+    return;
+  }
+
   document.getElementById('editUserId').value = id;
   document.getElementById('editUserName').value = u.full_name;
   document.getElementById('editUserRole').value = u.role;
   document.getElementById('editUserPassword').value = '';
+
+  // Скрыть высокие роли если не суперадмин
+  document.querySelectorAll('#editUserRole .superadmin-only').forEach(el => {
+    el.style.display = isSuperAdmin(currentUser) ? '' : 'none';
+  });
+
+  // Если текущая роль высокая и пользователь не суперадмин — заблокировать select
+  const roleSelect = document.getElementById('editUserRole');
+  roleSelect.disabled = !isSuperAdmin(currentUser);
+
   document.getElementById('modalEditUser').classList.add('show');
 }
 
@@ -441,11 +475,27 @@ async function saveEditUser() {
   const full_name = document.getElementById('editUserName').value.trim();
   const role = document.getElementById('editUserRole').value;
   const password = document.getElementById('editUserPassword').value.trim();
+
   if (!full_name) { showAlert('editUserAlert', 'Введите ФИО', 'error'); return; }
-  const upd = { full_name, role };
+
+  // Защита: только суперадмин меняет роли на admin/superadmin
+  const highRoles = ['admin', 'superadmin'];
+  if (highRoles.includes(role) && !isSuperAdmin(currentUser)) {
+    showAlert('editUserAlert', '⛔ Только супер-администратор может назначать эту роль', 'error');
+    return;
+  }
+
+  const upd = { full_name };
+  // Роль меняет только суперадмин
+  if (isSuperAdmin(currentUser)) upd.role = role;
   if (password) upd.password_hash = password;
+
   const { error } = await db.from('users').update(upd).eq('id', id);
   if (error) { showAlert('editUserAlert', 'Ошибка: ' + error.message, 'error'); return; }
+
+  // Разблокировать select обратно
+  document.getElementById('editUserRole').disabled = false;
+
   closeModal('modalEditUser');
   showAlert('userAlert', 'Пользователь обновлён', 'success');
   await loadUsers();
