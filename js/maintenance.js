@@ -9,6 +9,11 @@ async function loadMaintenance() {
   const container = document.getElementById('maintenanceList');
   container.innerHTML = '<div class="loading">Загрузка...</div>';
 
+  // Загружаем ожидающие одобрения (только для admin/superadmin)
+  if (isAdmin(currentUser)) {
+    await loadPendingApprovals();
+  }
+
   const { data, error } = await db.from('devices')
     .select('id, name, type, location, status, maintenance_interval_days, last_maintenance, next_maintenance, notification_email')
     .order('next_maintenance', { ascending: true, nullsFirst: false });
@@ -20,6 +25,99 @@ async function loadMaintenance() {
 
   allMaintenance = data || [];
   renderMaintenance(allMaintenance);
+}
+
+// ── Блок "На проверке" ────────────────────────
+async function loadPendingApprovals() {
+  const { data: pending } = await db
+    .from('maintenance_logs')
+    .select('*, devices(id, name, type, location, maintenance_interval_days)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false });
+
+  const wrap = document.getElementById('pendingApprovalsWrap');
+  if (!wrap) return;
+
+  if (!pending?.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  wrap.innerHTML = `
+    <div style="font-weight:700;font-size:14px;color:var(--yellow);margin-bottom:10px;">
+      🕐 Ожидают вашего одобрения (${pending.length})
+    </div>
+    ${pending.map(l => `
+      <div class="card" style="margin-bottom:10px;border:2px solid var(--yellow);">
+        <div class="flex-between" style="flex-wrap:wrap;gap:8px;">
+          <div>
+            <div style="font-weight:700;">${l.devices?.name || '—'}</div>
+            <div class="text-muted" style="font-size:12px;">${l.devices?.type || ''} · ${l.devices?.location || ''}</div>
+            <div style="font-size:12px;margin-top:4px;">📅 Дата ТО: <b>${new Date(l.maintenance_date).toLocaleDateString('ru')}</b></div>
+            ${l.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">💬 ${l.notes}</div>` : ''}
+          </div>
+          <span style="background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow);padding:4px 12px;border-radius:100px;font-size:12px;font-weight:700;">🕐 На проверке</span>
+        </div>
+        <div class="flex mt-8" style="gap:8px;">
+          <button class="btn btn-success btn-sm" style="flex:1;" onclick="approveMaintenance('${l.id}', '${l.devices?.id}', ${l.devices?.maintenance_interval_days || 90}, '${l.maintenance_date}', '${l.devices?.name?.replace(/'/g,"\\'")}')">
+            ✅ Одобрить
+          </button>
+          <button class="btn btn-danger btn-sm" style="flex:1;" onclick="rejectMaintenance('${l.id}', '${l.devices?.name?.replace(/'/g,"\\'")}')">
+            ❌ Отклонить
+          </button>
+        </div>
+      </div>`).join('')}`;
+}
+
+async function approveMaintenance(logId, deviceId, interval, maintenanceDate, deviceName) {
+  if (!confirm(`Одобрить выполнение ТО для "${deviceName}"?`)) return;
+
+  const next = new Date(maintenanceDate);
+  next.setDate(next.getDate() + interval);
+  const nextDate = next.toISOString().split('T')[0];
+
+  // Обновить лог — одобрено
+  const { error: logErr } = await db.from('maintenance_logs').update({
+    status: 'approved',
+    approved_by: currentUser.id,
+    approved_at: new Date().toISOString()
+  }).eq('id', logId);
+
+  if (logErr) { showMaintenanceAlert('Ошибка: ' + logErr.message, 'error'); return; }
+
+  // Теперь обновить устройство — дата пересчитывается
+  const { error: devErr } = await db.from('devices').update({
+    last_maintenance: maintenanceDate,
+    next_maintenance: nextDate,
+    status: 'active'
+  }).eq('id', deviceId);
+
+  if (devErr) { showMaintenanceAlert('Ошибка: ' + devErr.message, 'error'); return; }
+
+  showMaintenanceAlert(`✅ ТО одобрено! Следующее ТО для "${deviceName}": ${next.toLocaleDateString('ru')}`, 'success');
+  await loadMaintenance();
+}
+
+async function rejectMaintenance(logId, deviceName) {
+  const reason = prompt(`Причина отклонения ТО для "${deviceName}":`);
+  if (reason === null) return;
+
+  const { error } = await db.from('maintenance_logs').update({
+    status: 'rejected',
+    approved_by: currentUser.id,
+    approved_at: new Date().toISOString(),
+    notes: (document.querySelector(`[data-log-id="${logId}"]`)?.dataset?.notes || '') + (reason ? ` [Отклонено: ${reason}]` : ' [Отклонено]')
+  }).eq('id', logId);
+
+  // Вернуть статус устройства в active
+  const { data: log } = await db.from('maintenance_logs').select('device_id').eq('id', logId).single();
+  if (log) await db.from('devices').update({ status: 'active' }).eq('id', log.device_id);
+
+  if (error) { showMaintenanceAlert('Ошибка: ' + error.message, 'error'); return; }
+
+  showMaintenanceAlert(`❌ ТО для "${deviceName}" отклонено. ИТР должен повторить.`, 'error');
+  await loadMaintenance();
 }
 
 function renderMaintenance(devices) {
@@ -171,34 +269,164 @@ async function saveMaintenanceSettings() {
   setTimeout(() => { closeModal('modalMaintenance'); loadMaintenance(); }, 800);
 }
 
-// ── Отметить выполнено ────────────────────────
+// ── Модальное окно выполнения ТО ─────────────
+let doneDocFile = null;
+let donePhotoFile = null;
+let doneDeviceId = null;
+let doneDeviceName = null;
+
 async function markMaintenanceDone(deviceId, deviceName) {
-  if (!confirm(`Отметить ТО для "${deviceName}" как выполненное?`)) return;
+  doneDocFile = null;
+  donePhotoFile = null;
+  doneDeviceId = deviceId;
+  doneDeviceName = deviceName;
 
-  const notes = prompt('Заметки о проведённом ТО (необязательно):') ?? '';
+  document.getElementById('doneModalDeviceName').textContent = deviceName;
+  document.getElementById('doneModalDeviceId').value = deviceId;
+  document.getElementById('doneModalNotes').value = '';
+  document.getElementById('doneDocInput').value = '';
+  document.getElementById('donePhotoInput').value = '';
+
+  // Сбросить статусы
+  resetDoneZone('doneDocZone', 'doneDocStatus', '📄', 'Нажмите для загрузки акта');
+  resetDoneZone('donePhotoZone', 'donePhotoStatus', '📷', 'Нажмите для загрузки фото');
+
+  document.getElementById('doneModalConfirmBtn').disabled = true;
+  document.getElementById('doneModalConfirmBtn').style.opacity = '0.5';
+  document.getElementById('doneModalHint').style.display = 'block';
+  document.getElementById('doneModalAlert').className = 'alert';
+
+  document.getElementById('modalDone').classList.add('show');
+}
+
+function resetDoneZone(zoneId, statusId, icon, text) {
+  document.getElementById(zoneId).style.borderColor = 'var(--border)';
+  document.getElementById(zoneId).style.background = '';
+  document.getElementById(zoneId).innerHTML = `
+    <div style="font-size:24px;">${icon}</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${text}</div>
+    <input type="file" id="${zoneId === 'doneDocZone' ? 'doneDocInput' : 'donePhotoInput'}" 
+      style="display:none" 
+      accept="${zoneId === 'doneDocZone' ? '.pdf,.doc,.docx,.xls,.xlsx' : 'image/*'}" 
+      onchange="handleDoneFile(this,'${zoneId === 'doneDocZone' ? 'doc' : 'photo'}')">`;
+  document.getElementById(statusId).style.display = 'none';
+}
+
+function handleDoneFile(input, type) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 20 * 1024 * 1024) {
+    alert('Файл не должен превышать 20MB');
+    return;
+  }
+
+  if (type === 'doc') {
+    doneDocFile = file;
+    const zone = document.getElementById('doneDocZone');
+    zone.style.borderColor = 'var(--green)';
+    zone.style.background = 'var(--green-dim)';
+    zone.innerHTML = `
+      <div style="font-size:24px;">✅</div>
+      <div style="font-weight:600;font-size:13px;color:var(--green);margin-top:4px;">${file.name}</div>
+      <div style="font-size:11px;color:var(--text-muted);">${(file.size/1024).toFixed(0)} KB · нажмите чтобы заменить</div>
+      <input type="file" id="doneDocInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx" onchange="handleDoneFile(this,'doc')">`;
+  } else {
+    donePhotoFile = file;
+    const zone = document.getElementById('donePhotoZone');
+    zone.style.borderColor = 'var(--green)';
+    zone.style.background = 'var(--green-dim)';
+
+    // Показать превью фото
+    const reader = new FileReader();
+    reader.onload = e => {
+      zone.innerHTML = `
+        <img src="${e.target.result}" style="max-height:120px;border-radius:6px;margin-bottom:6px;">
+        <div style="font-weight:600;font-size:13px;color:var(--green);">${file.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);">нажмите чтобы заменить</div>
+        <input type="file" id="donePhotoInput" style="display:none" accept="image/*" onchange="handleDoneFile(this,'photo')">`;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  checkDoneModalButton();
+}
+
+function checkDoneModalButton() {
+  const canDone = doneDocFile !== null && donePhotoFile !== null;
+  const btn = document.getElementById('doneModalConfirmBtn');
+  const hint = document.getElementById('doneModalHint');
+  btn.disabled = !canDone;
+  btn.style.opacity = canDone ? '1' : '0.5';
+  hint.style.display = canDone ? 'none' : 'block';
+}
+
+function closeDoneModal() {
+  document.getElementById('modalDone').classList.remove('show');
+  doneDocFile = null;
+  donePhotoFile = null;
+}
+
+async function confirmDone() {
+  if (!doneDocFile || !donePhotoFile || !doneDeviceId) return;
+
+  const btn = document.getElementById('doneModalConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Сохранение...';
+
+  const notes = document.getElementById('doneModalNotes').value.trim();
   const today = new Date().toISOString().split('T')[0];
-  const device = allMaintenance.find(d => d.id === deviceId);
-  const interval = device?.maintenance_interval_days || 90;
-  const next = new Date();
-  next.setDate(next.getDate() + interval);
-  const nextDate = next.toISOString().split('T')[0];
 
-  const { error } = await db.from('devices').update({
-    last_maintenance: today,
-    next_maintenance: nextDate,
-    status: 'active'
-  }).eq('id', deviceId);
+  try {
+    // Загрузить документ
+    const docExt = doneDocFile.name.split('.').pop();
+    const docPath = `${doneDeviceId}/acts/${Date.now()}_act.${docExt}`;
+    const { error: docErr } = await db.storage.from('device-files').upload(docPath, doneDocFile);
+    if (docErr) throw new Error('Ошибка загрузки акта: ' + docErr.message);
 
-  if (error) { showMaintenanceAlert('Ошибка: ' + error.message, 'error'); return; }
+    await db.from('device_files').insert({
+      device_id: doneDeviceId,
+      name: doneDocFile.name,
+      file_path: docPath,
+      file_type: doneDocFile.type,
+      visible_to_workers: false
+    });
 
-  await db.from('maintenance_logs').insert({
-    device_id: deviceId,
-    maintenance_date: today,
-    notes: notes || null
-  });
+    // Загрузить фото
+    const photoExt = donePhotoFile.name.split('.').pop();
+    const photoPath = `${doneDeviceId}/acts/${Date.now()}_photo.${photoExt}`;
+    const { error: photoErr } = await db.storage.from('device-files').upload(photoPath, donePhotoFile);
+    if (photoErr) throw new Error('Ошибка загрузки фото: ' + photoErr.message);
 
-  showMaintenanceAlert(`✅ ТО для "${deviceName}" зафиксировано. Следующее: ${next.toLocaleDateString('ru')}`, 'success');
-  await loadMaintenance();
+    await db.from('device_files').insert({
+      device_id: doneDeviceId,
+      name: donePhotoFile.name,
+      file_path: photoPath,
+      file_type: donePhotoFile.type,
+      visible_to_workers: false
+    });
+
+    // Записать лог ТО со статусом "pending" — ждёт одобрения
+    await db.from('maintenance_logs').insert({
+      device_id: doneDeviceId,
+      maintenance_date: today,
+      notes: notes || null,
+      status: 'pending'
+    });
+
+    // Поставить статус устройства "на проверке"
+    await db.from('devices').update({ status: 'maintenance' }).eq('id', doneDeviceId);
+
+    closeDoneModal();
+    showMaintenanceAlert(`📋 ТО для "${doneDeviceName}" отправлено на проверку администратору`, 'success');
+    await loadMaintenance();
+
+  } catch(e) {
+    const alertEl = document.getElementById('doneModalAlert');
+    alertEl.textContent = e.message;
+    alertEl.className = 'alert alert-error show';
+    btn.disabled = false;
+    btn.textContent = '✅ Подтвердить выполнение';
+  }
 }
 
 // ── История ТО ───────────────────────────────
@@ -216,12 +444,18 @@ async function openMaintenanceLogs(deviceId, deviceName) {
     return;
   }
 
-  container.innerHTML = data.map(l => `
-    <tr>
+  container.innerHTML = data.map(l => {
+    const statusBadge = l.status === 'approved'
+      ? '<span style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:2px 8px;border-radius:100px;font-size:11px;">✅ Одобрено</span>'
+      : l.status === 'rejected'
+      ? '<span style="background:var(--red-dim);color:var(--red);border:1px solid var(--red);padding:2px 8px;border-radius:100px;font-size:11px;">❌ Отклонено</span>'
+      : '<span style="background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow);padding:2px 8px;border-radius:100px;font-size:11px;">🕐 На проверке</span>';
+    return `<tr>
       <td>${new Date(l.maintenance_date).toLocaleDateString('ru-RU')}</td>
       <td>${l.notes || '—'}</td>
-      <td class="text-muted" style="font-size:12px;">${new Date(l.created_at).toLocaleDateString('ru-RU')}</td>
-    </tr>`).join('');
+      <td>${statusBadge}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── Тест письма ──────────────────────────────
