@@ -222,7 +222,11 @@ async function loadPassport(deviceId) {
 // ── ДОКУМЕНТЫ ────────────────────────────────
 async function loadDocs(deviceId) {
   const role = currentUser?.role || 'worker';
-  let query = db.from('device_files').select('*').eq('device_id', deviceId).order('uploaded_at', { ascending: false });
+  // Исключаем файлы актов ТО (они в вкладке Акты)
+  let query = db.from('device_files').select('*')
+    .eq('device_id', deviceId)
+    .is('maintenance_log_id', null)  // только обычные документы
+    .order('uploaded_at', { ascending: false });
 
   // Персонал и неавторизованные видят только публичные файлы
   if (!currentUser || role === 'worker') {
@@ -310,6 +314,15 @@ async function deleteDeviceFile(id, path) {
 
 // ── ТО ───────────────────────────────────────
 async function loadTO(deviceId) {
+  // КРИТИЧНО: сначала загружаем файлы чтобы кнопка "Выполнено" работала правильно
+  const role = currentUser?.role || 'worker';
+  let query = db.from('device_files').select('*').eq('device_id', deviceId);
+  if (!currentUser || role === 'worker') {
+    query = query.eq('visible_to_workers', true);
+  }
+  const { data: files } = await query;
+  deviceFiles = files || [];
+
   const { data: device } = await db.from('devices')
     .select('maintenance_interval_days, last_maintenance, next_maintenance, notification_email')
     .eq('id', deviceId).single();
@@ -319,6 +332,7 @@ async function loadTO(deviceId) {
 
   if (!device?.next_maintenance) {
     el.innerHTML = '<p class="text-muted" style="padding:8px;">График ТО не настроен. Обратитесь к администратору.</p>';
+    checkDoneButton();
     return;
   }
 
@@ -460,23 +474,50 @@ async function loadActs(deviceId) {
     .order('maintenance_date', { ascending: false });
 
   const el = document.getElementById('actsContent');
-
   if (!logs?.length) {
     el.innerHTML = '<p class="text-muted" style="padding:8px;">Актов выполненных работ нет</p>';
     return;
   }
 
-  el.innerHTML = logs.map(l => `
-    <div class="card" style="margin-bottom:10px;">
-      <div class="flex-between">
-        <div>
-          <div style="font-weight:700;">${new Date(l.maintenance_date).toLocaleDateString('ru', { day:'numeric', month:'long', year:'numeric' })}</div>
-          <div class="text-muted" style="font-size:12px;margin-top:2px;">${l.users?.full_name ? 'Выполнил: ' + l.users.full_name : ''}</div>
+  const baseUrl = 'https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/';
+
+  // Загружаем файлы для каждого акта
+  const logsWithFiles = await Promise.all(logs.map(async l => {
+    const { data: files } = await db.from('device_files')
+      .select('*').eq('maintenance_log_id', l.id);
+    return { ...l, files: files || [] };
+  }));
+
+  const statusBadge = s => s === 'approved'
+    ? '<span style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:2px 8px;border-radius:100px;font-size:11px;">✅ Одобрено</span>'
+    : s === 'rejected'
+    ? '<span style="background:var(--red-dim);color:var(--red);border:1px solid var(--red);padding:2px 8px;border-radius:100px;font-size:11px;">❌ Отклонено</span>'
+    : '<span style="background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow);padding:2px 8px;border-radius:100px;font-size:11px;">🕐 На проверке</span>';
+
+  el.innerHTML = logsWithFiles.map(l => {
+    const docs = l.files.filter(f => f.file_category === 'act_doc' || (!f.file_type?.includes('image') && f.maintenance_log_id));
+    const photos = l.files.filter(f => f.file_category === 'act_photo' || (f.file_type?.includes('image') && f.maintenance_log_id));
+
+    return `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="flex-between" style="flex-wrap:wrap;gap:8px;">
+          <div>
+            <div style="font-weight:700;">${new Date(l.maintenance_date).toLocaleDateString('ru', {day:'numeric',month:'long',year:'numeric'})}</div>
+            <div class="text-muted" style="font-size:12px;margin-top:2px;">${l.users?.full_name ? 'Выполнил: '+l.users.full_name : ''}</div>
+          </div>
+          ${statusBadge(l.status)}
         </div>
-        <span class="ok-tag">✅ Выполнено</span>
-      </div>
-      ${l.notes ? `<div style="margin-top:10px;font-size:13px;color:var(--text);background:var(--surface2);padding:10px;border-radius:6px;">${l.notes}</div>` : ''}
-    </div>`).join('');
+        ${l.notes ? `<div style="margin-top:8px;font-size:13px;background:var(--surface2);padding:10px;border-radius:6px;">${l.notes}</div>` : ''}
+        ${docs.length || photos.length ? `
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;font-weight:600;">📎 Файлы акта:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;">
+              ${docs.map(f => `<a href="${baseUrl}${f.file_path}" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;">📄 ${f.name}</a>`).join('')}
+              ${photos.map(f => `<a href="${baseUrl}${f.file_path}" target="_blank"><img src="${baseUrl}${f.file_path}" style="height:60px;width:60px;object-fit:cover;border-radius:6px;border:2px solid var(--border);" title="${f.name}"></a>`).join('')}
+            </div>
+          </div>` : ''}
+      </div>`;
+  }).join('');
 }
 
 // ── ЛОГИ ─────────────────────────────────────
