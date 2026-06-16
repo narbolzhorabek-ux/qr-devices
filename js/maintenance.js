@@ -27,7 +27,9 @@ async function loadMaintenance() {
   renderMaintenance(allMaintenance);
 }
 
-// ── Блок "На проверке" ────────────────────────
+// ── Блок "На проверке" с файлами ─────────────
+function esc(s) { return (s||'').replace(/'/g,"\'"); }
+
 async function loadPendingApprovals() {
   const { data: pending } = await db
     .from('maintenance_logs')
@@ -37,37 +39,52 @@ async function loadPendingApprovals() {
 
   const wrap = document.getElementById('pendingApprovalsWrap');
   if (!wrap) return;
+  if (!pending?.length) { wrap.style.display = 'none'; return; }
 
-  if (!pending?.length) {
-    wrap.style.display = 'none';
-    return;
-  }
+  const baseUrl = 'https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/';
+
+  // Загружаем файлы актов для каждого устройства
+  const logsWithFiles = await Promise.all(pending.map(async l => {
+    const { data: files } = await db.from('device_files')
+      .select('*').eq('device_id', l.devices?.id)
+      .like('file_path', '%/acts/%')
+      .order('uploaded_at', { ascending: false }).limit(10);
+    return { ...l, actFiles: files || [] };
+  }));
 
   wrap.style.display = 'block';
   wrap.innerHTML = `
-    <div style="font-weight:700;font-size:14px;color:var(--yellow);margin-bottom:10px;">
+    <div style="font-weight:700;font-size:14px;color:var(--yellow);margin-bottom:12px;">
       🕐 Ожидают вашего одобрения (${pending.length})
     </div>
-    ${pending.map(l => `
-      <div class="card" style="margin-bottom:10px;border:2px solid var(--yellow);">
-        <div class="flex-between" style="flex-wrap:wrap;gap:8px;">
-          <div>
-            <div style="font-weight:700;">${l.devices?.name || '—'}</div>
-            <div class="text-muted" style="font-size:12px;">${l.devices?.type || ''} · ${l.devices?.location || ''}</div>
-            <div style="font-size:12px;margin-top:4px;">📅 Дата ТО: <b>${new Date(l.maintenance_date).toLocaleDateString('ru')}</b></div>
-            ${l.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">💬 ${l.notes}</div>` : ''}
+    ${logsWithFiles.map(l => {
+      const docs = l.actFiles.filter(f => !f.file_type?.includes('image'));
+      const photos = l.actFiles.filter(f => f.file_type?.includes('image'));
+      return `
+        <div class="card" style="margin-bottom:12px;border:2px solid var(--yellow);">
+          <div class="flex-between" style="flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-weight:700;">${l.devices?.name || '—'}</div>
+              <div class="text-muted" style="font-size:12px;">${l.devices?.type||''} · ${l.devices?.location||''}</div>
+              <div style="font-size:12px;margin-top:4px;">📅 Дата ТО: <b>${new Date(l.maintenance_date).toLocaleDateString('ru')}</b></div>
+              ${l.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">💬 ${l.notes}</div>` : ''}
+            </div>
+            <span style="background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow);padding:4px 12px;border-radius:100px;font-size:12px;font-weight:700;">🕐 На проверке</span>
           </div>
-          <span style="background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow);padding:4px 12px;border-radius:100px;font-size:12px;font-weight:700;">🕐 На проверке</span>
-        </div>
-        <div class="flex mt-8" style="gap:8px;">
-          <button class="btn btn-success btn-sm" style="flex:1;" onclick="approveMaintenance('${l.id}', '${l.devices?.id}', ${l.devices?.maintenance_interval_days || 90}, '${l.maintenance_date}', '${l.devices?.name?.replace(/'/g,"\\'")}')">
-            ✅ Одобрить
-          </button>
-          <button class="btn btn-danger btn-sm" style="flex:1;" onclick="rejectMaintenance('${l.id}', '${l.devices?.name?.replace(/'/g,"\\'")}')">
-            ❌ Отклонить
-          </button>
-        </div>
-      </div>`).join('')}`;
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">📎 Загруженные файлы для проверки:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;">
+              ${docs.map(f => `<a href="${baseUrl}${f.file_path}" target="_blank" class="btn btn-secondary btn-sm" style="font-size:11px;">📄 ${f.name}</a>`).join('')}
+              ${photos.map(f => `<a href="${baseUrl}${f.file_path}" target="_blank"><img src="${baseUrl}${f.file_path}" style="height:70px;width:70px;object-fit:cover;border-radius:8px;border:2px solid var(--border);" title="${f.name}"></a>`).join('')}
+              ${!docs.length && !photos.length ? '<span style="color:var(--red);font-size:12px;">⚠️ Файлы не загружены</span>' : ''}
+            </div>
+          </div>
+          <div class="flex mt-8" style="gap:8px;">
+            <button class="btn btn-success btn-sm" style="flex:1;" onclick="approveMaintenance('${l.id}','${l.devices?.id}',${l.devices?.maintenance_interval_days||90},'${l.maintenance_date}','${esc(l.devices?.name||'')}')">✅ Одобрить</button>
+            <button class="btn btn-danger btn-sm" style="flex:1;" onclick="rejectMaintenance('${l.id}','${esc(l.devices?.name||'')}')">❌ Отклонить</button>
+          </div>
+        </div>`;
+    }).join('')}`;
 }
 
 async function approveMaintenance(logId, deviceId, interval, maintenanceDate, deviceName) {
