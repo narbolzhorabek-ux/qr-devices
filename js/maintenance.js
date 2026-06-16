@@ -20,9 +20,16 @@ async function loadMaintenance() {
     await loadPendingApprovals();
   }
 
-  const { data, error } = await db.from('devices')
-    .select('id, name, type, location, status, maintenance_interval_days, last_maintenance, next_maintenance, notification_email')
+  let query = db.from('devices')
+    .select('id, name, type, location, status, maintenance_interval_days, last_maintenance, next_maintenance, notification_email, zone_id')
     .order('next_maintenance', { ascending: true, nullsFirst: false });
+
+  // Не-админы с привязкой к зоне видят только своё
+  if (!isAdmin(currentUser) && currentUser.zone_id) {
+    query = query.eq('zone_id', currentUser.zone_id);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     container.innerHTML = `<p style="color:var(--red)">Ошибка: ${error.message}</p>`;
