@@ -210,6 +210,12 @@
       </div>
     </div>
 
+    <!-- Последние 10 выполненных ТО (только superadmin/admin) -->
+    <div id="recentTOWrap" style="display:none;margin-bottom:16px;">
+      <div class="section-title">📋 Последние 10 выполненных ТО</div>
+      <div id="recentTOList"></div>
+    </div>
+
     <div class="search-bar">
       <input id="searchMaintenance" type="text" placeholder="🔍 Поиск..." oninput="filterMaintenance()">
       <select id="filterMaintenanceStatus" onchange="filterMaintenance()">
@@ -240,7 +246,6 @@
       </div>
       <button class="btn btn-primary mt-8" onclick="addZone()">+ Добавить зону</button>
     </div>
-
     <div class="section-title">Список зон</div>
     <div id="zonesList"><div class="loading">Загрузка...</div></div>
   </div>
