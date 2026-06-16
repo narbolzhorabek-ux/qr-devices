@@ -40,6 +40,14 @@ async function initAdmin() {
     this.value = this.value.replace(/\D/g, '');
   });
 
+  // Скрыть фильтр зон для пользователей привязанных к конкретной зоне
+  if (!isAdmin(currentUser) && currentUser.zone_id) {
+    ['filterDeviceZone','filterUserZone'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.parentElement.style.display = 'none';
+    });
+  }
+
   await loadZones();
   await loadDevices();
 }
