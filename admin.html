@@ -38,6 +38,7 @@
     <button class="tab" id="tab-users" onclick="switchTab('users')">👥 Пользователи</button>
     <button class="tab" id="tab-logs" onclick="switchTab('logs')">📊 Логи</button>
     <button class="tab" id="tab-maintenance" onclick="switchTab('maintenance')">🔧 ТО</button>
+    <button class="tab" id="tab-zones" onclick="switchTab('zones')">📍 Зоны</button>
   </div>
 
   <!-- ══ DEVICES ══ -->
@@ -76,6 +77,12 @@
             <option value="danger">⚠️ Опасность</option>
           </select>
         </div>
+        <div class="form-group" style="margin:0;">
+          <label>Зона / Место *</label>
+          <select id="newDeviceZone">
+            <option value="">— Выберите зону —</option>
+          </select>
+        </div>
       </div>
       <div class="form-group" style="margin-top:12px;">
         <label>Общая информация об ОТУ</label>
@@ -92,6 +99,9 @@
         <option value="active">Активно</option>
         <option value="maintenance">Обслуживание</option>
         <option value="danger">Опасность</option>
+      </select>
+      <select id="filterDeviceZone" onchange="filterDevices()">
+        <option value="">Все зоны</option>
       </select>
       <span class="count-badge" id="deviceCount">0</span>
     </div>
@@ -118,6 +128,12 @@
             <option value="superadmin" class="superadmin-only">🛡️ Супер-администратор — полный доступ</option>
           </select>
         </div>
+        <div class="form-group" style="margin:0;">
+          <label>Зона / Место доступа</label>
+          <select id="newUserZone">
+            <option value="all">🌐 Общий доступ (все зоны)</option>
+          </select>
+        </div>
       </div>
       <div class="flex mt-16" style="flex-wrap:wrap;gap:8px;">
         <button class="btn btn-primary" style="flex:1;min-width:160px;" onclick="addUser()">+ Добавить</button>
@@ -138,6 +154,9 @@
         <option value="chief">Начальник службы</option>
         <option value="itr">ИТР</option>
         <option value="worker">Персонал</option>
+      </select>
+      <select id="filterUserZone" onchange="filterUsers()">
+        <option value="">Все зоны</option>
       </select>
       <span class="count-badge" id="userCount">0</span>
     </div>
@@ -208,9 +227,40 @@
     <div id="maintenanceList"><div class="loading">Загрузка...</div></div>
   </div>
 
+  <!-- ══ ZONES ══ -->
+  <div class="tab-content" id="content-zones">
+    <div class="alert" id="zoneAlert"></div>
+    <div class="section-title">Управление зонами / местами</div>
+
+    <div class="card" id="addZoneCard">
+      <div style="font-weight:600;margin-bottom:12px;">+ Добавить зону</div>
+      <div class="grid-2">
+        <div class="form-group" style="margin:0;"><label>Название *</label><input id="newZoneName" type="text" placeholder="1 этаж"></div>
+        <div class="form-group" style="margin:0;"><label>Описание</label><input id="newZoneDesc" type="text" placeholder="Первый этаж здания"></div>
+      </div>
+      <button class="btn btn-primary mt-8" onclick="addZone()">+ Добавить зону</button>
+    </div>
+
+    <div class="section-title">Список зон</div>
+    <div id="zonesList"><div class="loading">Загрузка...</div></div>
+  </div>
+
 </div>
 
-<!-- MODAL: Edit Device -->
+<!-- MODAL: Edit Zone -->
+<div class="modal-overlay" id="modalEditZone">
+  <div class="modal">
+    <div class="modal-title">✏️ Редактировать зону</div>
+    <input type="hidden" id="editZoneId">
+    <div class="alert" id="editZoneAlert"></div>
+    <div class="form-group"><label>Название</label><input id="editZoneName" type="text"></div>
+    <div class="form-group"><label>Описание</label><input id="editZoneDesc" type="text"></div>
+    <div class="flex">
+      <button class="btn btn-primary" onclick="saveEditZone()" style="flex:1;">Сохранить</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalEditZone')" style="flex:1;">Отмена</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modalEditDevice">
   <div class="modal">
     <div class="modal-title">✏️ Редактировать ОТУ</div>
@@ -232,6 +282,10 @@
       </div>
     </div>
     <div class="form-group"><label>Общая информация</label><textarea id="editDeviceInfo" rows="3"></textarea></div>
+    <div class="form-group">
+      <label>Зона / Место</label>
+      <select id="editDeviceZone"><option value="">— Выберите зону —</option></select>
+    </div>
     <div class="flex">
       <button class="btn btn-primary" onclick="saveEditDevice()" style="flex:1;">Сохранить</button>
       <button class="btn btn-secondary" onclick="closeModal('modalEditDevice')" style="flex:1;">Отмена</button>
@@ -267,8 +321,9 @@
     <div id="qrcode" style="display:inline-block;padding:16px;background:#fff;border-radius:8px;border:1px solid var(--border);"></div>
     <div id="qrDeviceId" style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-top:8px;"></div>
     <div class="flex mt-16" style="justify-content:center;">
-      <button class="btn btn-primary" onclick="printQR()" style="max-width:200px;">🖨 Распечатать</button>
-      <button class="btn btn-secondary" onclick="closeModal('modalQR')" style="max-width:200px;">Закрыть</button>
+      <button class="btn btn-primary" onclick="printQR()" style="max-width:180px;">🖨 Распечатать</button>
+      <button class="btn btn-secondary" onclick="downloadQR()" style="max-width:180px;">⬇ Скачать PNG</button>
+      <button class="btn btn-secondary" onclick="closeModal('modalQR')" style="max-width:180px;">Закрыть</button>
     </div>
   </div>
 </div>
@@ -311,6 +366,12 @@
         <option value="chief">👔 Начальник службы</option>
         <option value="admin" class="superadmin-only">⚙️ Администратор</option>
         <option value="superadmin" class="superadmin-only">🛡️ Супер-администратор</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Зона / Место доступа</label>
+      <select id="editUserZone">
+        <option value="all">🌐 Общий доступ (все зоны)</option>
       </select>
     </div>
     <div class="flex">
