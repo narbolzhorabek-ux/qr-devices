@@ -15,6 +15,13 @@ async function initAdmin() {
   currentUser = requireAdmin();
   if (!currentUser) return;
 
+  // Всегда перечитываем zone_id из БД — не доверяем старому localStorage
+  const { data: freshUser } = await db.from('users').select('zone_id').eq('id', currentUser.id).single();
+  if (freshUser) {
+    currentUser.zone_id = freshUser.zone_id;
+    setUser(currentUser); // обновляем localStorage
+  }
+
   document.getElementById('userName').textContent = currentUser.full_name;
   const roleEl = document.getElementById('userRoleBadge');
   if (roleEl) roleEl.innerHTML = `<span class="role-badge ${roleBadgeClass(currentUser.role)}">${roleLabel(currentUser.role)}</span>`;
