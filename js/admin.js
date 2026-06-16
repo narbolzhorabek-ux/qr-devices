@@ -108,6 +108,10 @@ async function loadZonesTab() {
   const container = document.getElementById('zonesList');
   if (!container) return;
 
+  // Скрыть форму добавления для не-админов
+  const addCard = document.getElementById('addZoneCard');
+  if (addCard) addCard.style.display = isAdmin(currentUser) ? 'block' : 'none';
+
   container.innerHTML = allZones.map(z => `
     <div class="card" style="margin-bottom:10px;">
       <div class="flex-between">
@@ -125,6 +129,7 @@ async function loadZonesTab() {
 }
 
 async function addZone() {
+  if (!isAdmin(currentUser)) { showAlert('zoneAlert','⛔ Только администратор может добавлять зоны','error'); return; }
   const name = document.getElementById('newZoneName').value.trim();
   const description = document.getElementById('newZoneDesc').value.trim();
   if (!name) { showAlert('zoneAlert','Введите название зоны','error'); return; }
@@ -155,6 +160,7 @@ async function saveEditZone() {
 }
 
 async function deleteZone(id, name) {
+  if (!isSuperAdmin(currentUser)) { showAlert('zoneAlert','⛔ Только супер-администратор может удалять зоны','error'); return; }
   if (!confirm(`Удалить зону "${name}"?\nУстройства и пользователи этой зоны потеряют привязку.`)) return;
   const { error } = await db.from('zones').delete().eq('id', id);
   if (error) { showAlert('zoneAlert','Ошибка: '+error.message,'error'); return; }
@@ -171,14 +177,20 @@ function zoneName(zoneId) {
 // ── ФИЛЬТР УСТРОЙСТВ ПО ЗОНЕ ─────────────────
 function getAccessibleDevices(devices) {
   if (isSuperAdmin(currentUser)) return devices;
-  if (!currentUser.zone_id) return devices; // общий доступ
-  return devices.filter(d => !d.zone_id || d.zone_id === currentUser.zone_id);
+  if (isAdmin(currentUser) && !currentUser.zone_id) return devices; // admin с общим доступом
+  if (!currentUser.zone_id) {
+    // Пользователь с общим доступом (chief/itr без зоны) — видит всё
+    return devices;
+  }
+  // Пользователь с конкретной зоной — видит ТОЛЬКО устройства своей зоны
+  return devices.filter(d => d.zone_id === currentUser.zone_id);
 }
 
 function getAccessibleUsers(users) {
   if (isSuperAdmin(currentUser)) return users;
   if (!currentUser.zone_id) return users;
-  return users.filter(u => !u.zone_id || u.zone_id === currentUser.zone_id || u.zone_id === null);
+  // Пользователь с зоной видит только свою зону + тех у кого нет зоны
+  return users.filter(u => !u.zone_id || u.zone_id === currentUser.zone_id);
 }
 
 // ── DEVICES ───────────────────────────────────
