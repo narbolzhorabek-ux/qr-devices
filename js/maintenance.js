@@ -9,7 +9,13 @@ async function loadMaintenance() {
   const container = document.getElementById('maintenanceList');
   container.innerHTML = '<div class="loading">Загрузка...</div>';
 
-  // Загружаем ожидающие одобрения (только для admin/superadmin)
+  // Последние 10 ТО — только для admin/superadmin
+  if (isAdmin(currentUser)) {
+    await loadRecentTO();
+    document.getElementById('recentTOWrap').style.display = 'block';
+  }
+
+  // Ожидающие одобрения — только для admin/superadmin
   if (isAdmin(currentUser)) {
     await loadPendingApprovals();
   }
@@ -25,6 +31,63 @@ async function loadMaintenance() {
 
   allMaintenance = data || [];
   renderMaintenance(allMaintenance);
+}
+
+// ── Последние 10 выполненных ТО ──────────────
+async function loadRecentTO() {
+  const { data: logs } = await db
+    .from('maintenance_logs')
+    .select('*, devices(name, type, location), users(full_name)')
+    .in('status', ['approved', 'pending'])
+    .order('maintenance_date', { ascending: false })
+    .limit(10);
+
+  const container = document.getElementById('recentTOList');
+  if (!logs?.length) {
+    container.innerHTML = '<p class="text-muted" style="padding:8px 0;">Нет выполненных ТО</p>';
+    return;
+  }
+
+  const baseUrl = 'https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/';
+
+  const statusBadge = s => s === 'approved'
+    ? '<span style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);padding:2px 8px;border-radius:100px;font-size:11px;">✅ Одобрено</span>'
+    : '<span style="background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow);padding:2px 8px;border-radius:100px;font-size:11px;">🕐 На проверке</span>';
+
+  container.innerHTML = `<div class="table-wrap"><table>
+    <thead>
+      <tr>
+        <th>Дата ТО</th>
+        <th>Устройство</th>
+        <th>Местонахождение</th>
+        <th>Выполнил</th>
+        <th>Статус</th>
+        <th>Файлы</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${await Promise.all(logs.map(async l => {
+        const { data: files } = await db.from('device_files')
+          .select('name, file_path, file_type, file_category')
+          .eq('maintenance_log_id', l.id);
+        const docs = (files||[]).filter(f => f.file_category === 'act_doc' || !f.file_type?.includes('image'));
+        const photos = (files||[]).filter(f => f.file_category === 'act_photo' || f.file_type?.includes('image'));
+        const filesHtml = [
+          ...docs.map(f => `<a href="${baseUrl}${f.file_path}" target="_blank" style="font-size:11px;color:var(--accent);">📄 ${f.name}</a>`),
+          ...photos.map(f => `<a href="${baseUrl}${f.file_path}" target="_blank"><img src="${baseUrl}${f.file_path}" style="height:32px;width:32px;object-fit:cover;border-radius:4px;vertical-align:middle;"></a>`)
+        ].join(' ') || '—';
+
+        return `<tr>
+          <td style="font-weight:600;white-space:nowrap;">${new Date(l.maintenance_date).toLocaleDateString('ru')}</td>
+          <td>${l.devices?.name || '—'}</td>
+          <td style="font-size:12px;color:var(--text-muted);">${l.devices?.location || '—'}</td>
+          <td style="font-size:12px;">${l.users?.full_name || '—'}</td>
+          <td>${statusBadge(l.status)}</td>
+          <td style="font-size:12px;">${filesHtml}</td>
+        </tr>`;
+      })).then(rows => rows.join(''))}
+    </tbody>
+  </table></div>`;
 }
 
 // ── Блок "На проверке" с файлами ─────────────
@@ -43,12 +106,12 @@ async function loadPendingApprovals() {
 
   const baseUrl = 'https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/';
 
-  // Загружаем файлы актов для каждого устройства
+  // Загружаем файлы только привязанные к этому логу ТО
   const logsWithFiles = await Promise.all(pending.map(async l => {
     const { data: files } = await db.from('device_files')
-      .select('*').eq('device_id', l.devices?.id)
-      .like('file_path', '%/acts/%')
-      .order('uploaded_at', { ascending: false }).limit(10);
+      .select('*')
+      .eq('maintenance_log_id', l.id)
+      .order('uploaded_at', { ascending: true });
     return { ...l, actFiles: files || [] };
   }));
 
@@ -394,9 +457,22 @@ async function confirmDone() {
   const today = new Date().toISOString().split('T')[0];
 
   try {
-    // Загрузить документ
+    // Сначала создаём запись лога ТО — получаем его ID
+    const { data: logData, error: logErr } = await db.from('maintenance_logs').insert({
+      device_id: doneDeviceId,
+      maintenance_date: today,
+      notes: notes || null,
+      status: 'pending',
+      performed_by: currentUser?.id || null
+    }).select().single();
+
+    if (logErr) throw new Error('Ошибка создания записи ТО: ' + logErr.message);
+
+    const logId = logData.id;
+
+    // Загрузить документ — привязать к логу
     const docExt = doneDocFile.name.split('.').pop();
-    const docPath = `${doneDeviceId}/acts/${Date.now()}_act.${docExt}`;
+    const docPath = `${doneDeviceId}/acts/${logId}_act.${docExt}`;
     const { error: docErr } = await db.storage.from('device-files').upload(docPath, doneDocFile);
     if (docErr) throw new Error('Ошибка загрузки акта: ' + docErr.message);
 
@@ -405,12 +481,14 @@ async function confirmDone() {
       name: doneDocFile.name,
       file_path: docPath,
       file_type: doneDocFile.type,
-      visible_to_workers: false
+      visible_to_workers: false,
+      maintenance_log_id: logId,
+      file_category: 'act_doc'
     });
 
-    // Загрузить фото
+    // Загрузить фото — привязать к логу
     const photoExt = donePhotoFile.name.split('.').pop();
-    const photoPath = `${doneDeviceId}/acts/${Date.now()}_photo.${photoExt}`;
+    const photoPath = `${doneDeviceId}/acts/${logId}_photo.${photoExt}`;
     const { error: photoErr } = await db.storage.from('device-files').upload(photoPath, donePhotoFile);
     if (photoErr) throw new Error('Ошибка загрузки фото: ' + photoErr.message);
 
@@ -419,15 +497,9 @@ async function confirmDone() {
       name: donePhotoFile.name,
       file_path: photoPath,
       file_type: donePhotoFile.type,
-      visible_to_workers: false
-    });
-
-    // Записать лог ТО со статусом "pending" — ждёт одобрения
-    await db.from('maintenance_logs').insert({
-      device_id: doneDeviceId,
-      maintenance_date: today,
-      notes: notes || null,
-      status: 'pending'
+      visible_to_workers: false,
+      maintenance_log_id: logId,
+      file_category: 'act_photo'
     });
 
     // Поставить статус устройства "на проверке"
