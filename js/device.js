@@ -469,7 +469,7 @@ async function markDone() {
 // ── АКТЫ ─────────────────────────────────────
 async function loadActs(deviceId) {
   const { data: logs } = await db.from('maintenance_logs')
-    .select('*, users(full_name)')
+    .select('*, users:performed_by(full_name)')
     .eq('device_id', deviceId)
     .order('maintenance_date', { ascending: false });
 
