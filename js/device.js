@@ -388,82 +388,166 @@ async function loadTO(deviceId) {
 
 // ── КНОПКА ВЫПОЛНЕНО ─────────────────────────
 function checkDoneButton() {
-  const doneSection = document.getElementById('doneSection');
-  if (!doneSection || doneSection.style.display === 'none') return;
-
-  const hasDoc = deviceFiles.some(f => !f.file_type?.includes('image'));
-  const hasPhoto = deviceFiles.some(f => f.file_type?.includes('image'));
-  const canDone = hasDoc && hasPhoto;
-
+  // Кнопка всегда активна — файлы загружаются прямо в модальном окне при нажатии
   const btn = document.getElementById('doneBtn');
+  if (btn) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
   const hint = document.getElementById('doneBtnHint');
+  if (hint) hint.style.display = 'none';
   const req = document.getElementById('doneRequirements');
-
-  btn.disabled = !canDone;
-  btn.style.opacity = canDone ? '1' : '0.5';
-  hint.style.display = canDone ? 'none' : 'block';
-
-  req.innerHTML = `
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <span class="${hasDoc ? 'ok-tag' : 'required-tag'}">
-        ${hasDoc ? '✅' : '❌'} Акт/документ
-      </span>
-      <span class="${hasPhoto ? 'ok-tag' : 'required-tag'}">
-        ${hasPhoto ? '✅' : '❌'} Фотография
-      </span>
-    </div>
-    <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">
-      ${canDone ? 'Все требования выполнены — можно нажать кнопку' : 'Загрузите оба типа файлов во вкладке Документы'}
-    </div>`;
+  if (req) req.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Нажмите кнопку — загрузите акт и фото в окне подтверждения</div>';
 }
 
-async function markDone() {
+// Переменные для модалки ТО (device page)
+let deviceDoneDocFile = null;
+let deviceDonePhotoFile = null;
+
+function markDone() {
   if (!currentDevice || !currentUser) return;
-  if (!confirm('Подтвердить выполнение ТО?')) return;
+  deviceDoneDocFile = null;
+  deviceDonePhotoFile = null;
 
-  const notes = document.getElementById('doneNotes').value.trim();
-  const today = new Date().toISOString().split('T')[0];
-  const interval = currentDevice.maintenance_interval_days || 90;
-  const next = new Date();
-  next.setDate(next.getDate() + interval);
-  const nextDate = next.toISOString().split('T')[0];
+  // Заполняем модалку
+  document.getElementById('devDoneDeviceName').textContent = currentDevice.name;
+  document.getElementById('devDoneNotes').value = '';
+  document.getElementById('devDoneAlert').className = 'alert';
+  resetDevDoneZone('devDoneDocZone', '📄', 'Нажмите для загрузки акта', 'doc');
+  resetDevDoneZone('devDonePhotoZone', '📷', 'Нажмите для загрузки фото', 'photo');
+  updateDevDoneBtn();
+  document.getElementById('modalDevDone').classList.add('show');
+}
 
-  const btn = document.getElementById('doneBtn');
+function resetDevDoneZone(zoneId, icon, text, type) {
+  const accept = type === 'doc' ? '.pdf,.doc,.docx,.xls,.xlsx' : 'image/*';
+  document.getElementById(zoneId).style.borderColor = 'var(--border)';
+  document.getElementById(zoneId).style.background = '';
+  document.getElementById(zoneId).innerHTML = `
+    <div style="font-size:24px;">${icon}</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${text}</div>
+    <input type="file" style="display:none" accept="${accept}" onchange="handleDevDoneFile(this,'${type}')">`;
+}
+
+function handleDevDoneFile(input, type) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 20 * 1024 * 1024) { alert('Файл не должен превышать 20MB'); return; }
+
+  const zoneId = type === 'doc' ? 'devDoneDocZone' : 'devDonePhotoZone';
+  const zone = document.getElementById(zoneId);
+  const accept = type === 'doc' ? '.pdf,.doc,.docx,.xls,.xlsx' : 'image/*';
+
+  if (type === 'doc') {
+    deviceDoneDocFile = file;
+    zone.style.borderColor = 'var(--green)';
+    zone.style.background = 'var(--green-dim)';
+    zone.innerHTML = `
+      <div style="font-size:24px;">✅</div>
+      <div style="font-weight:600;font-size:13px;color:var(--green);margin-top:4px;">${file.name}</div>
+      <div style="font-size:11px;color:var(--text-muted);">${(file.size/1024).toFixed(0)} KB · нажмите чтобы заменить</div>
+      <input type="file" style="display:none" accept="${accept}" onchange="handleDevDoneFile(this,'doc')">`;
+  } else {
+    deviceDonePhotoFile = file;
+    zone.style.borderColor = 'var(--green)';
+    zone.style.background = 'var(--green-dim)';
+    const reader = new FileReader();
+    reader.onload = e => {
+      zone.innerHTML = `
+        <img src="${e.target.result}" style="max-height:120px;border-radius:6px;margin-bottom:6px;">
+        <div style="font-weight:600;font-size:13px;color:var(--green);">${file.name}</div>
+        <div style="font-size:11px;color:var(--text-muted);">нажмите чтобы заменить</div>
+        <input type="file" style="display:none" accept="${accept}" onchange="handleDevDoneFile(this,'photo')">`;
+    };
+    reader.readAsDataURL(file);
+  }
+  updateDevDoneBtn();
+}
+
+function updateDevDoneBtn() {
+  const btn = document.getElementById('devDoneConfirmBtn');
+  const hint = document.getElementById('devDoneHint');
+  const can = deviceDoneDocFile && deviceDonePhotoFile;
+  btn.disabled = !can;
+  btn.style.opacity = can ? '1' : '0.5';
+  if (hint) hint.style.display = can ? 'none' : 'block';
+}
+
+function closeDevDoneModal() {
+  document.getElementById('modalDevDone').classList.remove('show');
+  deviceDoneDocFile = null;
+  deviceDonePhotoFile = null;
+}
+
+async function confirmDevDone() {
+  if (!deviceDoneDocFile || !deviceDonePhotoFile || !currentDevice) return;
+
+  const btn = document.getElementById('devDoneConfirmBtn');
   btn.disabled = true;
   btn.textContent = '⏳ Сохранение...';
 
-  // Обновить устройство
-  const { error } = await db.from('devices').update({
-    last_maintenance: today,
-    next_maintenance: nextDate,
-    status: 'active'
-  }).eq('id', currentDevice.id);
+  const notes = document.getElementById('devDoneNotes').value.trim();
+  const today = new Date().toISOString().split('T')[0];
 
-  if (error) {
-    showDeviceAlert('doneAlert', 'Ошибка: ' + error.message, 'error');
+  try {
+    // Создаём запись лога ТО
+    const { data: logData, error: logErr } = await db.from('maintenance_logs').insert({
+      device_id: currentDevice.id,
+      maintenance_date: today,
+      notes: notes || null,
+      status: 'pending',
+      performed_by: currentUser.id
+    }).select().single();
+
+    if (logErr) throw new Error('Ошибка создания записи ТО: ' + logErr.message);
+    const logId = logData.id;
+
+    // Загрузить акт — привязать к логу
+    const docExt = deviceDoneDocFile.name.split('.').pop();
+    const docPath = `${currentDevice.id}/acts/${logId}_act.${docExt}`;
+    const { error: docErr } = await db.storage.from('device-files').upload(docPath, deviceDoneDocFile);
+    if (docErr) throw new Error('Ошибка загрузки акта: ' + docErr.message);
+    await db.from('device_files').insert({
+      device_id: currentDevice.id,
+      name: deviceDoneDocFile.name,
+      file_path: docPath,
+      file_type: deviceDoneDocFile.type,
+      visible_to_workers: false,
+      maintenance_log_id: logId,
+      file_category: 'act_doc'
+    });
+
+    // Загрузить фото — привязать к логу
+    const photoExt = deviceDonePhotoFile.name.split('.').pop();
+    const photoPath = `${currentDevice.id}/acts/${logId}_photo.${photoExt}`;
+    const { error: photoErr } = await db.storage.from('device-files').upload(photoPath, deviceDonePhotoFile);
+    if (photoErr) throw new Error('Ошибка загрузки фото: ' + photoErr.message);
+    await db.from('device_files').insert({
+      device_id: currentDevice.id,
+      name: deviceDonePhotoFile.name,
+      file_path: photoPath,
+      file_type: deviceDonePhotoFile.type,
+      visible_to_workers: false,
+      maintenance_log_id: logId,
+      file_category: 'act_photo'
+    });
+
+    // Поставить статус устройства "на проверке"
+    await db.from('devices').update({ status: 'maintenance' }).eq('id', currentDevice.id);
+    currentDevice.status = 'maintenance';
+
+    closeDevDoneModal();
+    showDeviceAlert('doneAlert', '📋 ТО отправлено на проверку администратору', 'success');
+    await loadTO(currentDevice.id);
+    await loadActs(currentDevice.id);
+
+  } catch(e) {
+    const alertEl = document.getElementById('devDoneAlert');
+    alertEl.textContent = e.message;
+    alertEl.className = 'alert alert-error show';
     btn.disabled = false;
-    btn.textContent = '✅ Отметить выполненным';
-    return;
+    btn.textContent = '✅ Подтвердить выполнение';
   }
-
-  // Записать лог ТО
-  await db.from('maintenance_logs').insert({
-    device_id: currentDevice.id,
-    maintenance_date: today,
-    notes: notes || null,
-    performed_by: currentUser.id
-  });
-
-  // Обновить локальный объект
-  currentDevice.last_maintenance = today;
-  currentDevice.next_maintenance = nextDate;
-
-  showDeviceAlert('doneAlert', `✅ ТО зафиксировано! Следующее: ${next.toLocaleDateString('ru')}`, 'success');
-  document.getElementById('doneNotes').value = '';
-  btn.textContent = '✅ Отметить выполненным';
-
-  // Перезагрузить таб ТО
-  await loadTO(currentDevice.id);
 }
 
 // ── АКТЫ ─────────────────────────────────────
@@ -503,7 +587,7 @@ async function loadActs(deviceId) {
         <div class="flex-between" style="flex-wrap:wrap;gap:8px;">
           <div>
             <div style="font-weight:700;">${new Date(l.maintenance_date).toLocaleDateString('ru', {day:'numeric',month:'long',year:'numeric'})}</div>
-            <div class="text-muted" style="font-size:12px;margin-top:2px;">${l.users?.full_name ? 'Выполнил: '+l.users.full_name : ''}</div>
+            <div class="text-muted" style="font-size:12px;margin-top:2px;">${l.users?.full_name ? 'Выполнил: '+l.users.full_name : ''}${l.created_at ? ' · ' + new Date(l.created_at).toLocaleTimeString('ru', {hour:'2-digit',minute:'2-digit'}) : ''}</div>
           </div>
           ${statusBadge(l.status)}
         </div>
