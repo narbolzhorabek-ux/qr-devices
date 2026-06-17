@@ -15,13 +15,6 @@ async function initAdmin() {
   currentUser = requireAdmin();
   if (!currentUser) return;
 
-  // Всегда перечитываем zone_id из БД — не доверяем старому localStorage
-  const { data: freshUser } = await db.from('users').select('zone_id').eq('id', currentUser.id).single();
-  if (freshUser) {
-    currentUser.zone_id = freshUser.zone_id;
-    setUser(currentUser); // обновляем localStorage
-  }
-
   document.getElementById('userName').textContent = currentUser.full_name;
   const roleEl = document.getElementById('userRoleBadge');
   if (roleEl) roleEl.innerHTML = `<span class="role-badge ${roleBadgeClass(currentUser.role)}">${roleLabel(currentUser.role)}</span>`;
@@ -46,14 +39,6 @@ async function initAdmin() {
   document.getElementById('newUserIin')?.addEventListener('input', function() {
     this.value = this.value.replace(/\D/g, '');
   });
-
-  // Скрыть фильтр зон для пользователей привязанных к конкретной зоне
-  if (!isAdmin(currentUser) && currentUser.zone_id) {
-    ['filterDeviceZone','filterUserZone'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.parentElement.style.display = 'none';
-    });
-  }
 
   await loadZones();
   await loadDevices();
