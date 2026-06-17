@@ -41,12 +41,16 @@ async function loadMaintenance() {
 
 // ── Последние 10 выполненных ТО ──────────────
 async function loadRecentTO() {
-  const { data: logs } = await db
+  const { data: logs, error } = await db
     .from('maintenance_logs')
-    .select('*, devices(name, type, location, zone_id), users(full_name)')
+    .select('*, devices(name, type, location, zone_id), users:performed_by(full_name)')
     .in('status', ['approved', 'pending'])
     .order('maintenance_date', { ascending: false })
     .limit(30);
+
+  if (error) {
+    console.error('loadRecentTO error:', error);
+  }
 
   const container = document.getElementById('recentTOList');
 
