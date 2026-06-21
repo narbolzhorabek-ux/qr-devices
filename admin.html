@@ -6,10 +6,10 @@
   <title>Система QR-учёта ОТУ</title>
   <link rel="stylesheet" href="css/style.css">
   <style>
-    .search-bar input, .search-bar select { flex:1; min-width:140px; padding:9px 12px; font-size:14px; }
     .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
     @media(max-width:600px){ .grid-2,.grid-3{ grid-template-columns:1fr; } }
+    .search-bar input, .search-bar select { flex:1; min-width:140px; padding:9px 12px; font-size:14px; }
   </style>
 </head>
 <body>
@@ -38,7 +38,8 @@
     <button class="tab" id="tab-users" onclick="switchTab('users')">👥 Пользователи</button>
     <button class="tab" id="tab-logs" onclick="switchTab('logs')">📊 Логи</button>
     <button class="tab" id="tab-maintenance" onclick="switchTab('maintenance')">🔧 ТО</button>
-    <button class="tab" id="tab-zones" onclick="switchTab('zones')">📍 Зоны</button>
+    <button class="tab" id="tab-acts" onclick="switchTab('acts')">📝 Акты</button>
+    <button class="tab" id="tab-zones" onclick="switchTab('zones')">🏢 Структура</button>
   </div>
 
   <!-- ══ DEVICES ══ -->
@@ -48,6 +49,7 @@
     <div class="section-title" id="addDeviceTitle">Регистрация нового ОТУ</div>
     <div class="card" id="addDeviceCard">
       <div id="duplicateWarning" class="duplicate-warning">⚠️ ОТУ с таким названием или инвентарным номером уже существует!</div>
+
       <div class="grid-2">
         <div class="form-group" style="margin:0;">
           <label>Наименование ОТУ *</label>
@@ -66,8 +68,8 @@
           <input id="newDeviceType" type="text" placeholder="Компрессор">
         </div>
         <div class="form-group" style="margin:0;">
-          <label>Местонахождение *</label>
-          <input id="newDeviceLocation" type="text" placeholder="Цех №1, зона A">
+          <label>Местонахождение (адрес/цех)</label>
+          <input id="newDeviceLocation" type="text" placeholder="Цех №1">
         </div>
         <div class="form-group" style="margin:0;">
           <label>Статус</label>
@@ -77,14 +79,47 @@
             <option value="danger">⚠️ Опасность</option>
           </select>
         </div>
+      </div>
+
+      <!-- Филиал → Подразделение → Служба -->
+      <div class="section-title" style="margin-top:16px;">Принадлежность (Филиал / Подразделение / Служба) *</div>
+      <div class="grid-3">
         <div class="form-group" style="margin:0;">
-          <label>Зона / Место *</label>
-          <select id="newDeviceZone">
-            <option value="">— Выберите зону —</option>
+          <label>Филиал</label>
+          <select id="newDeviceBranchSelect" class="branch-select" onchange="onBranchChange('newDeviceBranchSelect','newDeviceDeptSelect','newDeviceServiceSelect')">
+            <option value="">— Выберите филиал —</option>
+          </select>
+        </div>
+        <div class="form-group" id="newDeviceDeptSelectWrap" style="margin:0;display:none;">
+          <label>Подразделение</label>
+          <select id="newDeviceDeptSelect" onchange="onDepartmentChange('newDeviceDeptSelect','newDeviceServiceSelect')">
+            <option value="">— Выберите подразделение —</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Служба</label>
+          <select id="newDeviceServiceSelect" onchange="onNewDeviceServiceChange()">
+            <option value="">— Выберите службу —</option>
           </select>
         </div>
       </div>
+
+      <!-- МОЛ -->
       <div class="form-group" style="margin-top:12px;">
+        <label>МОЛ — материально ответственное лицо</label>
+        <select id="newDeviceResponsible">
+          <option value="">— Сначала выберите службу —</option>
+        </select>
+      </div>
+
+      <!-- Фото -->
+      <div class="form-group">
+        <label>Фотография устройства (необязательно)</label>
+        <input type="file" accept="image/*" onchange="handleNewDevicePhoto(this)">
+        <div id="newDevicePhotoPreview"></div>
+      </div>
+
+      <div class="form-group">
         <label>Общая информация об ОТУ</label>
         <textarea id="newDeviceInfo" placeholder="Технические характеристики, назначение, особенности эксплуатации..." rows="3"></textarea>
       </div>
@@ -99,9 +134,6 @@
         <option value="active">Активно</option>
         <option value="maintenance">Обслуживание</option>
         <option value="danger">Опасность</option>
-      </select>
-      <select id="filterDeviceZone" onchange="filterDevices()">
-        <option value="">Все зоны</option>
       </select>
       <span class="count-badge" id="deviceCount">0</span>
     </div>
@@ -128,13 +160,30 @@
             <option value="superadmin" class="superadmin-only">🛡️ Супер-администратор — полный доступ</option>
           </select>
         </div>
+      </div>
+
+      <div class="section-title" style="margin-top:12px;">Служба (Филиал / Подразделение / Служба)</div>
+      <div class="grid-3">
         <div class="form-group" style="margin:0;">
-          <label>Зона / Место доступа</label>
-          <select id="newUserZone">
-            <option value="all">🌐 Общий доступ (все зоны)</option>
+          <label>Филиал</label>
+          <select id="newUserBranchSelect" class="branch-select" onchange="onBranchChange('newUserBranchSelect','newUserDeptSelect','newUserServiceSelect')">
+            <option value="">— Выберите филиал —</option>
+          </select>
+        </div>
+        <div class="form-group" id="newUserDeptSelectWrap" style="margin:0;display:none;">
+          <label>Подразделение</label>
+          <select id="newUserDeptSelect" onchange="onDepartmentChange('newUserDeptSelect','newUserServiceSelect')">
+            <option value="">— Выберите подразделение —</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Служба</label>
+          <select id="newUserServiceSelect">
+            <option value="">🌐 Общий доступ (все службы)</option>
           </select>
         </div>
       </div>
+
       <div class="flex mt-16" style="flex-wrap:wrap;gap:8px;">
         <button class="btn btn-primary" style="flex:1;min-width:160px;" onclick="addUser()">+ Добавить</button>
         <label class="btn btn-secondary" style="flex:1;min-width:160px;cursor:pointer;">
@@ -154,9 +203,6 @@
         <option value="chief">Начальник службы</option>
         <option value="itr">ИТР</option>
         <option value="worker">Персонал</option>
-      </select>
-      <select id="filterUserZone" onchange="filterUsers()">
-        <option value="">Все зоны</option>
       </select>
       <span class="count-badge" id="userCount">0</span>
     </div>
@@ -179,14 +225,7 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>Время</th>
-            <th>Устройство</th>
-            <th>Пользователь</th>
-            <th>Роль</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Время</th><th>Устройство</th><th>Пользователь</th><th>Роль</th></tr></thead>
         <tbody id="logsBody"><tr><td colspan="4" class="loading">Загрузка...</td></tr></tbody>
       </table>
     </div>
@@ -210,11 +249,14 @@
       </div>
     </div>
 
-    <!-- Последние 10 выполненных ТО (только superadmin/admin) -->
+    <!-- Последние 10 ТО -->
     <div id="recentTOWrap" style="display:none;margin-bottom:16px;">
       <div class="section-title">📋 Последние 10 выполненных ТО</div>
       <div id="recentTOList"></div>
     </div>
+
+    <!-- Ожидают одобрения -->
+    <div id="pendingApprovalsWrap" style="display:none;background:var(--yellow-dim);border:2px solid var(--yellow);border-radius:8px;padding:16px;margin-bottom:16px;"></div>
 
     <div class="search-bar">
       <input id="searchMaintenance" type="text" placeholder="🔍 Поиск..." oninput="filterMaintenance()">
@@ -226,46 +268,77 @@
         <option value="none">Не настроено</option>
       </select>
     </div>
-
-    <!-- Ожидают одобрения (только admin/superadmin) -->
-    <div id="pendingApprovalsWrap" style="display:none;background:var(--yellow-dim);border:2px solid var(--yellow);border-radius:8px;padding:16px;margin-bottom:16px;"></div>
-
     <div id="maintenanceList"><div class="loading">Загрузка...</div></div>
   </div>
 
-  <!-- ══ ZONES ══ -->
+  <!-- ══ ACTS (отчёты) ══ -->
+  <div class="tab-content" id="content-acts">
+    <div class="alert" id="actsAlert"></div>
+    <div class="section-title">Акты выполненных работ — экспорт отчётов</div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div style="font-weight:600;margin-bottom:10px;">📤 Выгрузка актов в Excel</div>
+      <div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+        <div class="form-group" style="margin:0;">
+          <label>Количество последних записей</label>
+          <input id="actsExportCount" type="number" min="1" max="1000" value="50" style="width:140px;">
+        </div>
+        <button class="btn btn-primary" onclick="exportActsToExcel()">📥 Выгрузить в Excel</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+        В отчёт войдут: устройство, кто выполнил ТО, статус, какие документы и фото загружены
+      </div>
+    </div>
+
+    <div class="section-title">Все акты</div>
+    <div id="actsTabList"><div class="loading">Загрузка...</div></div>
+  </div>
+
+  <!-- ══ ZONES (Org structure) ══ -->
   <div class="tab-content" id="content-zones">
     <div class="alert" id="zoneAlert"></div>
-    <div class="section-title">Управление зонами / местами</div>
+    <div class="section-title">Структура: Филиал → Подразделение → Служба</div>
 
     <div class="card" id="addZoneCard">
-      <div style="font-weight:600;margin-bottom:12px;">+ Добавить зону</div>
-      <div class="grid-2">
-        <div class="form-group" style="margin:0;"><label>Название *</label><input id="newZoneName" type="text" placeholder="1 этаж"></div>
-        <div class="form-group" style="margin:0;"><label>Описание</label><input id="newZoneDesc" type="text" placeholder="Первый этаж здания"></div>
+      <div style="font-weight:600;margin-bottom:12px;">+ Добавить подразделение / службу</div>
+
+      <div class="form-group">
+        <label>Филиал</label>
+        <select id="zoneBranchSelect" onchange="onZoneBranchSelect()">
+          <option value="">— Выберите филиал —</option>
+        </select>
       </div>
-      <button class="btn btn-primary mt-8" onclick="addZone()">+ Добавить зону</button>
+
+      <div class="card" style="background:var(--surface2);margin-bottom:12px;">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">+ Добавить подразделение</div>
+        <div class="flex">
+          <input id="newDeptName" type="text" placeholder="Название подразделения" style="flex:1;">
+          <button class="btn btn-primary btn-sm" onclick="addDepartment()">+ Добавить</button>
+        </div>
+      </div>
+
+      <div class="card" style="background:var(--surface2);">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px;">+ Добавить службу</div>
+        <div class="form-group" id="zoneDeptWrap" style="display:none;">
+          <label>Подразделение</label>
+          <select id="zoneDeptSelect">
+            <option value="">— Выберите подразделение —</option>
+          </select>
+        </div>
+        <div class="flex">
+          <input id="newServiceName" type="text" placeholder="Название службы" style="flex:1;">
+          <button class="btn btn-primary btn-sm" onclick="addService()">+ Добавить</button>
+        </div>
+      </div>
     </div>
-    <div class="section-title">Список зон</div>
+
+    <div class="section-title">Текущая структура</div>
     <div id="zonesList"><div class="loading">Загрузка...</div></div>
   </div>
 
 </div>
 
-<!-- MODAL: Edit Zone -->
-<div class="modal-overlay" id="modalEditZone">
-  <div class="modal">
-    <div class="modal-title">✏️ Редактировать зону</div>
-    <input type="hidden" id="editZoneId">
-    <div class="alert" id="editZoneAlert"></div>
-    <div class="form-group"><label>Название</label><input id="editZoneName" type="text"></div>
-    <div class="form-group"><label>Описание</label><input id="editZoneDesc" type="text"></div>
-    <div class="flex">
-      <button class="btn btn-primary" onclick="saveEditZone()" style="flex:1;">Сохранить</button>
-      <button class="btn btn-secondary" onclick="closeModal('modalEditZone')" style="flex:1;">Отмена</button>
-    </div>
-  </div>
-</div>
+<!-- MODAL: Edit Device -->
 <div class="modal-overlay" id="modalEditDevice">
   <div class="modal">
     <div class="modal-title">✏️ Редактировать ОТУ</div>
@@ -286,11 +359,16 @@
         </select>
       </div>
     </div>
-    <div class="form-group"><label>Общая информация</label><textarea id="editDeviceInfo" rows="3"></textarea></div>
     <div class="form-group">
-      <label>Зона / Место</label>
-      <select id="editDeviceZone"><option value="">— Выберите зону —</option></select>
+      <label>МОЛ — материально ответственное лицо</label>
+      <select id="editDeviceResponsible"><option value="">— Не назначен —</option></select>
     </div>
+    <div class="form-group">
+      <label>Фотография устройства</label>
+      <input type="file" accept="image/*" onchange="handleEditDevicePhoto(this)">
+      <div id="editDevicePhotoPreview"></div>
+    </div>
+    <div class="form-group"><label>Общая информация</label><textarea id="editDeviceInfo" rows="3"></textarea></div>
     <div class="flex">
       <button class="btn btn-primary" onclick="saveEditDevice()" style="flex:1;">Сохранить</button>
       <button class="btn btn-secondary" onclick="closeModal('modalEditDevice')" style="flex:1;">Отмена</button>
@@ -373,13 +451,30 @@
         <option value="superadmin" class="superadmin-only">🛡️ Супер-администратор</option>
       </select>
     </div>
-    <div class="form-group">
-      <label>Зона / Место доступа</label>
-      <select id="editUserZone">
-        <option value="all">🌐 Общий доступ (все зоны)</option>
-      </select>
+
+    <div class="section-title" style="margin-top:12px;">Служба (Филиал / Подразделение / Служба)</div>
+    <div class="grid-3">
+      <div class="form-group" style="margin:0;">
+        <label>Филиал</label>
+        <select id="editUserBranchSelect" class="branch-select" onchange="onBranchChange('editUserBranchSelect','editUserDeptSelect','editUserServiceSelect')">
+          <option value="">— Выберите филиал —</option>
+        </select>
+      </div>
+      <div class="form-group" id="editUserDeptSelectWrap" style="margin:0;display:none;">
+        <label>Подразделение</label>
+        <select id="editUserDeptSelect" onchange="onDepartmentChange('editUserDeptSelect','editUserServiceSelect')">
+          <option value="">— Выберите подразделение —</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Служба</label>
+        <select id="editUserServiceSelect">
+          <option value="">🌐 Общий доступ (все службы)</option>
+        </select>
+      </div>
     </div>
-    <div class="flex">
+
+    <div class="flex mt-16">
       <button class="btn btn-primary" onclick="saveEditUser()" style="flex:1;">Сохранить</button>
       <button class="btn btn-secondary" onclick="closeModal('modalEditUser')" style="flex:1;">Отмена</button>
     </div>
@@ -437,29 +532,24 @@
     <input type="hidden" id="doneModalDeviceId">
     <div class="alert" id="doneModalAlert"></div>
 
-    <!-- Документ -->
     <div style="margin-bottom:16px;">
       <label style="margin-bottom:8px;display:block;">📄 Акт / документ <span style="color:var(--red);">*</span></label>
-      <div id="doneDocZone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s;" onclick="document.getElementById('doneDocInput').click()">
+      <div id="doneDocZone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;" onclick="document.getElementById('doneDocInput').click()">
         <div style="font-size:24px;">📄</div>
         <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">Нажмите для загрузки акта</div>
         <input type="file" id="doneDocInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx" onchange="handleDoneFile(this,'doc')">
       </div>
-      <div id="doneDocStatus" style="margin-top:6px;font-size:13px;display:none;"></div>
     </div>
 
-    <!-- Фото -->
     <div style="margin-bottom:16px;">
       <label style="margin-bottom:8px;display:block;">📷 Фотография <span style="color:var(--red);">*</span></label>
-      <div id="donePhotoZone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s;" onclick="document.getElementById('donePhotoInput').click()">
+      <div id="donePhotoZone" style="border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;cursor:pointer;" onclick="document.getElementById('donePhotoInput').click()">
         <div style="font-size:24px;">📷</div>
         <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">Нажмите для загрузки фото</div>
         <input type="file" id="donePhotoInput" style="display:none" accept="image/*" onchange="handleDoneFile(this,'photo')">
       </div>
-      <div id="donePhotoStatus" style="margin-top:6px;font-size:13px;display:none;"></div>
     </div>
 
-    <!-- Заметки -->
     <div class="form-group">
       <label>Заметки о проведённом ТО</label>
       <textarea id="doneModalNotes" rows="3" placeholder="Что было сделано, выявленные замечания..."></textarea>
