@@ -99,6 +99,7 @@ async function loadDeviceDetail(deviceId) {
       <div style="font-size:22px;font-weight:800;color:var(--accent);line-height:1.2;">${device.name}</div>
       ${device.photo_path ? `<img src="${baseUrl}${device.photo_path}" style="width:100%;max-height:280px;object-fit:cover;border-radius:10px;margin-top:12px;border:1px solid var(--border);">` : ''}
       ${device.brand ? `<div style="font-size:14px;color:var(--text-muted);margin-top:10px;">🏭 ${device.brand}</div>` : ''}
+      <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;" id="deviceOrgBadges"></div>
       <div style="margin-top:14px;display:grid;gap:0;">
         ${device.type ? infoRow('Тип устройства', device.type) : ''}
         ${infoRow('Местонахождение', device.location)}
@@ -106,12 +107,40 @@ async function loadDeviceDetail(deviceId) {
       </div>
     </div>`;
 
+  // Загружаем и показываем филиал/подразделение/службу + МОЛ
+  await loadDeviceOrgInfo(device);
+
   // Определяем доступные табы по роли
   buildTabs(deviceId);
 }
 
 function infoRow(label, value) {
   return `<div class="info-row"><span class="info-label">${label}</span><span class="info-value">${value}</span></div>`;
+}
+
+// ── Принадлежность Филиал/Подразделение/Служба + МОЛ ──
+async function loadDeviceOrgInfo(device) {
+  const badgesEl = document.getElementById('deviceOrgBadges');
+  if (!badgesEl) return;
+
+  let badges = [];
+
+  if (device.service_id) {
+    const { data: service } = await db.from('services').select('*, departments(name), branches(name)').eq('id', device.service_id).maybeSingle();
+    if (service) {
+      const parts = [service.branches?.name, service.departments?.name, service.name].filter(Boolean);
+      badges.push(`<span class="ica-badge">📍 ${parts.join(' / ')}</span>`);
+    }
+  }
+
+  if (device.responsible_user_id) {
+    const { data: resp } = await db.from('users').select('full_name').eq('id', device.responsible_user_id).maybeSingle();
+    if (resp) {
+      badges.push(`<span class="ica-badge" style="background:var(--green-dim);color:var(--green);border-color:var(--green);">👤 МОЛ: ${resp.full_name}</span>`);
+    }
+  }
+
+  badgesEl.innerHTML = badges.join('');
 }
 
 // ── Построить табы по роли ────────────────────
