@@ -43,6 +43,7 @@ async function initAdmin() {
   });
 
   await loadOrgStructure();
+  await loadUsers();
   await loadDevices();
 }
 
