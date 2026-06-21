@@ -21,7 +21,7 @@ async function loadMaintenance() {
   }
 
   const { data, error } = await db.from('devices')
-    .select('id, name, type, location, status, zone_id, maintenance_interval_days, last_maintenance, next_maintenance, notification_email')
+    .select('id, name, type, location, status, service_id, maintenance_interval_days, last_maintenance, next_maintenance, notification_email')
     .order('next_maintenance', { ascending: true, nullsFirst: false });
 
   if (error) {
@@ -31,9 +31,9 @@ async function loadMaintenance() {
 
   // Фильтр по зоне: superadmin и пользователи с общим доступом видят всё,
   // остальные — только устройства своей зоны
-  const filtered = (isSuperAdmin(currentUser) || !currentUser.zone_id)
+  const filtered = (isSuperAdmin(currentUser) || !currentUser.service_id)
     ? (data || [])
-    : (data || []).filter(d => d.zone_id === currentUser.zone_id);
+    : (data || []).filter(d => d.service_id === currentUser.service_id);
 
   allMaintenance = filtered;
   renderMaintenance(allMaintenance);
@@ -43,7 +43,7 @@ async function loadMaintenance() {
 async function loadRecentTO() {
   const { data: logs, error } = await db
     .from('maintenance_logs')
-    .select('*, devices(name, type, location, zone_id), users:performed_by(full_name)')
+    .select('*, devices(name, type, location, service_id), users:performed_by(full_name)')
     .in('status', ['approved', 'pending'])
     .order('maintenance_date', { ascending: false })
     .limit(30);
@@ -55,9 +55,9 @@ async function loadRecentTO() {
   const container = document.getElementById('recentTOList');
 
   // Фильтр по зоне пользователя
-  const filteredLogs = (isSuperAdmin(currentUser) || !currentUser.zone_id)
+  const filteredLogs = (isSuperAdmin(currentUser) || !currentUser.service_id)
     ? (logs || [])
-    : (logs || []).filter(l => l.devices?.zone_id === currentUser.zone_id);
+    : (logs || []).filter(l => l.devices?.service_id === currentUser.service_id);
 
   const top10 = filteredLogs.slice(0, 10);
 
@@ -114,14 +114,14 @@ function esc(s) { return (s||'').replace(/'/g,"\'"); }
 async function loadPendingApprovals() {
   const { data: pendingRaw } = await db
     .from('maintenance_logs')
-    .select('*, devices(id, name, type, location, maintenance_interval_days, zone_id)')
+    .select('*, devices(id, name, type, location, maintenance_interval_days, service_id)')
     .eq('status', 'pending')
     .order('created_at', { ascending: false });
 
   // Фильтр по зоне пользователя
-  const pending = (isSuperAdmin(currentUser) || !currentUser.zone_id)
+  const pending = (isSuperAdmin(currentUser) || !currentUser.service_id)
     ? (pendingRaw || [])
-    : (pendingRaw || []).filter(l => l.devices?.zone_id === currentUser.zone_id);
+    : (pendingRaw || []).filter(l => l.devices?.service_id === currentUser.service_id);
 
   const wrap = document.getElementById('pendingApprovalsWrap');
   if (!wrap) return;
