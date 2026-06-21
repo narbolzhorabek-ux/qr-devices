@@ -76,7 +76,7 @@
 
       const { data, error } = await db
         .from('users')
-        .select('id, full_name, role, zone_id')
+        .select('id, full_name, role, service_id')
         .eq('iin', iin)
         .eq('password_hash', password)
         .single();
