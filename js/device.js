@@ -89,6 +89,7 @@ async function loadDeviceDetail(deviceId) {
   }
 
   // Паспорт устройства
+  const baseUrl = 'https://strmnfwpdtdnevhpqtar.supabase.co/storage/v1/object/public/device-files/';
   document.getElementById('deviceInfo').innerHTML = `
     <div class="card" style="margin:16px 16px 0;">
       <div class="flex-between" style="flex-wrap:wrap;gap:8px;margin-bottom:12px;">
@@ -96,7 +97,8 @@ async function loadDeviceDetail(deviceId) {
         <span style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);">${device.inv_number ? '📋 ' + device.inv_number : ''}</span>
       </div>
       <div style="font-size:22px;font-weight:800;color:var(--accent);line-height:1.2;">${device.name}</div>
-      ${device.brand ? `<div style="font-size:14px;color:var(--text-muted);margin-top:4px;">🏭 ${device.brand}</div>` : ''}
+      ${device.photo_path ? `<img src="${baseUrl}${device.photo_path}" style="width:100%;max-height:280px;object-fit:cover;border-radius:10px;margin-top:12px;border:1px solid var(--border);">` : ''}
+      ${device.brand ? `<div style="font-size:14px;color:var(--text-muted);margin-top:10px;">🏭 ${device.brand}</div>` : ''}
       <div style="margin-top:14px;display:grid;gap:0;">
         ${device.type ? infoRow('Тип устройства', device.type) : ''}
         ${infoRow('Местонахождение', device.location)}
