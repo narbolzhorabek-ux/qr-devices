@@ -403,16 +403,23 @@ async function markMaintenanceDone(deviceId, deviceName) {
 }
 
 function resetDoneZone(zoneId, statusId, icon, text) {
-  document.getElementById(zoneId).style.borderColor = 'var(--border)';
-  document.getElementById(zoneId).style.background = '';
-  document.getElementById(zoneId).innerHTML = `
+  const zone = document.getElementById(zoneId);
+  if (!zone) return;
+  zone.style.borderColor = 'var(--border)';
+  zone.style.background = '';
+  zone.innerHTML = `
     <div style="font-size:24px;">${icon}</div>
     <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${text}</div>
     <input type="file" id="${zoneId === 'doneDocZone' ? 'doneDocInput' : 'donePhotoInput'}" 
       style="display:none" 
       accept="${zoneId === 'doneDocZone' ? '.pdf,.doc,.docx,.xls,.xlsx' : 'image/*'}" 
       onchange="handleDoneFile(this,'${zoneId === 'doneDocZone' ? 'doc' : 'photo'}')">`;
-  document.getElementById(statusId).style.display = 'none';
+
+  // statusId-элементов (doneDocStatus/donePhotoStatus) в текущей вёрстке нет —
+  // обращение к ним вызывало TypeError и обрывало markMaintenanceDone() на старте,
+  // из-за чего модалка "Выполнение ТО" не открывалась/не работала как надо.
+  const statusEl = statusId ? document.getElementById(statusId) : null;
+  if (statusEl) statusEl.style.display = 'none';
 }
 
 function handleDoneFile(input, type) {
